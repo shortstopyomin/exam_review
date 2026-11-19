@@ -42,6 +42,8 @@ export interface Section {
 
 export interface ExamStructure {
   sections: Section[];
+  /** 作答說明／注意事項的段落（不算題目） */
+  instructions: number[];
 }
 
 export type Severity = "error" | "warning" | "info";

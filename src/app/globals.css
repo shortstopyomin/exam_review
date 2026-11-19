@@ -224,3 +224,4 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
 .structure th { color: var(--muted); }
 .structure tbody tr:hover { background: var(--accent-soft); }
 .link-btn { font-weight: 600; }
+.para.is-instruction { color: var(--muted); font-style: italic; }

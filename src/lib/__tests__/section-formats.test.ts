@@ -104,3 +104,80 @@ describe("各種大題標題格式", () => {
     expect(sectionScore(s.sections[0]).total).toBe(10);
   });
 });
+
+describe("作答說明不算題目、不算大題", () => {
+  const TITLE = [
+    "越華國際學校 2026-2027 學年度 第 1 學期 10年級 中文數學 期末評量試卷",
+    "Viet Hoa International School Grade 10 Math C Final Exam of Semester 1 Year 2026-2027",
+    "班級 Class ：  座號 No.：  姓名 Name:  總分 Score:",
+  ];
+  const BODY = mathExam(12);
+  const structureOf = (lines: string[]) => analyzeStructure(doc(lines).paragraphs);
+
+  it("單獨一行 Complete all the questions.", () => {
+    const lines = [...TITLE, "Complete all the questions.", ...BODY];
+    const s = structureOf(lines);
+    expect(s.sections.map((x) => x.title)).toEqual([BODY[0], PART2]);
+    expect(s.instructions).toEqual([3]);
+    expect(scoreIssues(lines)).toEqual([]);
+  });
+
+  it("Word 自動編號的作答說明（1. 2. 3.）", () => {
+    const lines = [
+      ...TITLE,
+      "作答說明 / Instructions",
+      "1. Complete all the questions.",
+      "2. Write your answers on the answer sheet.",
+      "3. 本試卷共 4 頁，請檢查是否缺頁。",
+      "4. Calculators are not allowed.",
+      ...BODY,
+    ];
+    const s = structureOf(lines);
+    expect(s.sections.map((x) => x.title)).toEqual([BODY[0], PART2]);
+    expect(s.sections.map((x) => x.questions.length)).toEqual([20, 12]);
+    expect(s.instructions).toEqual([3, 4, 5, 6, 7]);
+    expect(scoreIssues(lines)).toEqual([]);
+  });
+
+  it("說明沒有標題、直接用編號列在第一個大題之前", () => {
+    const lines = [...TITLE, "1. Complete all the questions.", "2. Show all your work.", ...BODY];
+    expect(structureOf(lines).sections.map((x) => x.questions.length)).toEqual([20, 12]);
+    expect(scoreIssues(lines)).toEqual([]);
+  });
+
+  it("說明夾在大題底下或題目之間：不算題目，也不併進前一題", () => {
+    const lines = [
+      "Part 1 Multiple choice (每題40分，共40分)",
+      "Complete all the questions.",
+      "1. 題目一",
+      "Part 2 Calculation (每題30分，共60分)",
+      "Directions: Show all your work.",
+      "1. Complete all the questions.",
+      "1. 計算 3 + 4",
+      "Write your answers on the answer sheet.",
+      "2. 計算 5 + 6",
+    ];
+    const s = structureOf(lines);
+    expect(s.sections.map((x) => x.questions.map((q) => q.number))).toEqual([[1], [1, 2]]);
+    expect(s.sections[1].questions[0].body.trim()).toBe("計算 3 + 4");
+    expect(s.instructions).toEqual([1, 4, 5, 7]);
+    expect(scoreIssues(lines)).toEqual([]);
+  });
+
+  it.each([
+    "1. Complete the table below.",
+    "1. Answer the following: what is 3 + 4?",
+    "1. 說明：請說明光合作用的過程。",
+    "1. Read the passage and answer questions 2–4.",
+  ])("真正的題目不會被誤判成說明：%s", (q) => {
+    const s = structureOf(["Part 1 Short answer (共10分)", q]);
+    expect(s.instructions).toEqual([]);
+    expect(s.sections[0].questions).toHaveLength(1);
+  });
+
+  it("沒有任何大題標題時，編號題目照常計算", () => {
+    const s = structureOf(["Complete all the questions.", "1. 題目一", "2. 題目二"]);
+    expect(s.sections[0].questions.map((q) => q.number)).toEqual([1, 2]);
+    expect(s.instructions).toEqual([0]);
+  });
+});

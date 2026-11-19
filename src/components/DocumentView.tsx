@@ -14,7 +14,7 @@ interface Props {
 const RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 export function DocumentView({ doc, result, selected, onSelect }: Props) {
-  const { byPara, sectionAt, questionAt } = useMemo(() => {
+  const { byPara, sectionAt, questionAt, instructionAt } = useMemo(() => {
     const byPara = new Map<number, Issue[]>();
     for (const i of result.issues) {
       if (i.paragraphIndex === undefined) continue;
@@ -22,7 +22,8 @@ export function DocumentView({ doc, result, selected, onSelect }: Props) {
     }
     const sectionAt = new Set(result.structure.sections.map((s) => s.paragraphIndex));
     const questionAt = new Set(result.structure.sections.flatMap((s) => s.questions.map((q) => q.startParagraph)));
-    return { byPara, sectionAt, questionAt };
+    const instructionAt = new Set(result.structure.instructions);
+    return { byPara, sectionAt, questionAt, instructionAt };
   }, [result]);
 
   return (
@@ -38,6 +39,7 @@ export function DocumentView({ doc, result, selected, onSelect }: Props) {
             "para",
             sectionAt.has(p.index) && "is-section",
             questionAt.has(p.index) && "is-question",
+            instructionAt.has(p.index) && "is-instruction",
             p.inTable && "in-table",
             worst && `has-${worst}`,
             selected === p.index && "selected",
@@ -50,6 +52,7 @@ export function DocumentView({ doc, result, selected, onSelect }: Props) {
                 {p.text}
                 {p.imageCount > 0 && <span className="chip">圖片 ×{p.imageCount}</span>}
                 {p.hasMath && <span className="chip">方程式</span>}
+                {instructionAt.has(p.index) && <span className="chip">作答說明</span>}
               </div>
               {issues && selected === p.index && (
                 <ul className="para-issues">

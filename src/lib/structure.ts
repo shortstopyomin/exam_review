@@ -79,10 +79,53 @@ export function parseQuestionStart(text: string): { number: number; answerMark: 
   return { number: Number(m[2]), answerMark: m[1] ?? "", rest: text.slice(m[0].length) };
 }
 
+/** 作答說明的標題：「作答說明 / Instructions」「注意事項：」「Directions」 */
+const INSTRUCTION_HEADER_RE =
+  /^\s*(?:作答說明|作答須知|注意事項|考生須知|考試說明|instructions?|directions?|general\s+instructions?|notes?\s+to\s+(?:students|candidates))\s*(?:[:：/／]|$)/i;
+
+/**
+ * 常見的作答說明句子。出現在任何地方都不算題目，也不會被併進前一題。
+ * 刻意寫得很具體：「Complete the table below.」是題目，不能被誤判。
+ */
+const INSTRUCTION_SENTENCE_RE = new RegExp(
+  [
+    String.raw`^(?:please\s+)?(?:complete|answer|attempt)\s+all\s+(?:the\s+)?questions`,
+    String.raw`^(?:please\s+)?(?:read\s+)?(?:all\s+)?(?:the\s+)?questions?\s+carefully`,
+    String.raw`^(?:please\s+)?write\s+(?:all\s+)?(?:of\s+)?your\s+answers?`,
+    String.raw`^(?:please\s+)?show\s+(?:all\s+)?(?:of\s+)?your\s+(?:work|working|steps)`,
+    String.raw`answer\s+sheet|answer\s+booklet`,
+    String.raw`calculators?\s+(?:is|are|may)\s+(?:not\s+)?(?:allowed|permitted|be\s+used)`,
+    String.raw`^time\s+allowed|^duration\s*[:：]`,
+    String.raw`^本試卷|試卷共\s*\d+\s*頁|共\s*\d+\s*頁`,
+    String.raw`答案卡|答案卷|答案紙|答案欄|答案寫在|作答於|請將答案`,
+    String.raw`^請(?:用|以|使用)[一-鿿]{0,6}筆`,
+    String.raw`^考試時間|^作答時間`,
+    String.raw`^(?:請)?(?:仔細)?閱讀題目|^請詳讀`,
+  ].join("|"),
+  "i",
+);
+
+export function isInstruction(text: string): boolean {
+  const t = text.trim();
+  if (INSTRUCTION_HEADER_RE.test(t)) return true;
+  const q = parseQuestionStart(t);
+  return INSTRUCTION_SENTENCE_RE.test(q ? q.rest.trim() : t);
+}
+
 export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
   const sections: Section[] = [];
+  const instructions: number[] = [];
   let current: Section | undefined;
   let question: Question | undefined;
+
+  const isSectionHeader = (p: Paragraph) => {
+    const text = p.text.trim();
+    // 中英雙語標題比較長，放寬到 150 字
+    return !p.inTable && text.length > 0 && text.length <= 150 ? matchSection(text) : null;
+  };
+  // 有大題標題時，第一個大題之前的編號段落都是前言／作答說明，不算題目
+  const firstSection = paragraphs.find((p) => isSectionHeader(p) !== null)?.index ?? Infinity;
+  let inInstructionBlock = false;
 
   const finishQuestion = () => {
     if (question && current) {
@@ -96,10 +139,10 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
     const text = p.text.trim();
     if (!text) continue;
 
-    // 中英雙語標題比較長，放寬到 150 字
-    const sec = !p.inTable && text.length <= 150 ? matchSection(text) : null;
+    const sec = isSectionHeader(p);
     if (sec !== null) {
       finishQuestion();
+      inInstructionBlock = false;
       current = {
         title: text,
         paragraphIndex: p.index,
@@ -113,6 +156,18 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
     }
 
     const q = parseQuestionStart(text);
+    const beforeFirstSection = p.index < firstSection && firstSection !== Infinity;
+    if (
+      isInstruction(text) ||
+      (inInstructionBlock && !current) ||
+      (q && beforeFirstSection)
+    ) {
+      finishQuestion();
+      if (INSTRUCTION_HEADER_RE.test(text)) inInstructionBlock = true;
+      instructions.push(p.index);
+      continue;
+    }
+
     if (q) {
       finishQuestion();
       if (!current) {
@@ -135,7 +190,7 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
     }
   }
   finishQuestion();
-  return { sections };
+  return { sections, instructions };
 }
 
 /** 依大題配分推算該大題總分；無法判斷時回傳 undefined */
