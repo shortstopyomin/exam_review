@@ -34,7 +34,7 @@ const PTS = "(?:points?|pts?\\.?|marks?)";
 
 export interface ScoreText {
   perQuestion?: number;
-  /** 「每格 X 分」：試卷上有實際的格子「( )」，總分 = 每格分數 × 格子數 */
+  /** 「每格 X 分」：只記錄，不換算；大題分數採用「共 Y 分」 */
   perBlank?: number;
   total?: number;
   conflicts: string[];
@@ -116,13 +116,6 @@ export function parseScoreText(text: string): ScoreText {
 
 function hasScore(s: ScoreText) {
   return s.perQuestion !== undefined || s.perBlank !== undefined || s.total !== undefined;
-}
-
-/** 作答格子：空的括號「()」「( )」「（ ）」「（　）」 */
-const BLANK_BOX_RE = /[（(][ \t　]*[)）]/g;
-
-export function countBlanks(text: string): number {
-  return text.match(BLANK_BOX_RE)?.length ?? 0;
 }
 
 /** 單題配分：「（8 分）」「(5 points)」「[5 marks]」 */
@@ -264,7 +257,6 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
         startParagraph: p.index,
         endParagraph: p.index,
         body: q.rest,
-        blanks: countBlanks(text),
       };
       continue;
     }
@@ -272,7 +264,6 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
     if (question) {
       question.endParagraph = p.index;
       question.body += "\n" + text;
-      question.blanks += countBlanks(text);
     }
   }
   finishQuestion();
@@ -290,18 +281,12 @@ function scoreFields(score: ScoreText): Partial<Section> {
 
 /**
  * 依大題配分推算該大題總分；無法判斷時回傳 undefined。
- * 「每格 X 分」會數題目中的格子「( )」（含題號前的作答括號）。
+ * 「每格 X 分」不換算（不數格子），大題分數採用「共 Y 分」。
  */
-export function sectionScore(s: Section): { total?: number; computed?: number; blanks?: number } {
+export function sectionScore(s: Section): { total?: number; computed?: number } {
   let computed: number | undefined;
-  let blanks: number | undefined;
-  if (s.perQuestionScore !== undefined) {
-    computed = s.perQuestionScore * s.questions.length;
-  } else if (s.perBlankScore !== undefined) {
-    blanks = s.questions.reduce((a, q) => a + q.blanks, 0);
-    if (blanks > 0) computed = s.perBlankScore * blanks;
-  } else if (s.questions.length && s.questions.every((q) => q.score !== undefined)) {
+  if (s.perQuestionScore !== undefined) computed = s.perQuestionScore * s.questions.length;
+  else if (s.perBlankScore === undefined && s.questions.length && s.questions.every((q) => q.score !== undefined))
     computed = s.questions.reduce((a, q) => a + (q.score ?? 0), 0);
-  }
-  return { total: s.totalScore ?? computed, computed, blanks };
+  return { total: s.totalScore ?? computed, computed };
 }
