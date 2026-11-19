@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 試卷審題小幫手
 
-## Getting Started
+讓老師上傳 Word 試卷（.docx），依照 TOML 規則檔自動檢查題號、配分、選項與文字。
 
-First, run the development server:
+- **純前端**：試卷只在瀏覽器中解析，不會上傳到任何伺服器
+- **免費部署**：Next.js 靜態輸出，部署在 GitHub Pages
+
+## 本機開發
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm test           # 執行測試
+npm run sample     # 重新產生範例試卷 public/samples/sample-exam.docx
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 部署到 GitHub Pages
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. 把專案 push 到 GitHub 的 `main` 分支
+2. 到 repo 的 **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**
+3. 之後每次 push 到 `main`，`.github/workflows/deploy.yml` 會自動測試、建置並部署
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+網址會是 `https://<帳號>.github.io/<repo 名稱>/`。`basePath` 由 workflow 自動帶入，不需要手動設定。
 
-## Learn More
+## 試卷格式
 
-To learn more about Next.js, take a look at the following resources:
+解析器會辨識以下格式（Word 自動編號也可以）：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| 項目 | 範例 |
+|---|---|
+| 大題標題 | `一、選擇題（每題 4 分，共 40 分）` |
+| 題目 | `1.`、`1、`、`( )1.`、`（　）12．` |
+| 選擇題選項 | `(A) … (B) …`（可同一行或分行）、`A. …`（需在行首） |
+| 單題配分 | 題目中的 `（8 分）` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+大題配分的判斷順序：「共 Y 分」→「每題 X 分 × 題數」→ 各題「（X 分）」加總。
 
-## Deploy on Vercel
+## 規則檔
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+規則檔是 [TOML](https://toml.io/cn/) 格式，預設規則在 `src/lib/rules/default-rules.ts`，目前只啟用兩條：**試卷標題**（`exam-title`）與**總分是否為 100 分**（`total-score`）。下表其他規則類型都還能用，把它們加進規則檔即可；完整範例見 `src/lib/__tests__/fixtures/all-rules.toml`。網頁上可以直接編輯、上傳、下載，修改會存在瀏覽器（localStorage）。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```toml
+name = "我的規則"
+
+[[rules]]                  # 每一條規則以 [[rules]] 開頭
+id = "total-score"         # 自訂名稱，不可重複
+type = "score-sum"         # 規則類型（見下表）
+expect = 100
+severity = "error"         # "error" 不通過 / "warning" 警告 / "info" 提醒
+message = "自訂訊息（選填）"
+enabled = true             # false 可暫時停用
+
+[[rules]]
+id = "no-answer"
+type = "regex"
+pattern = '答案\s*[:：]'   # 正規表示式請用單引號，反斜線不用寫兩次
+```
+
+| type | 用途 | 參數 |
+|---|---|---|
+| `score-sum` | 配分加總、每大題配分是否一致 | `expect`（預設 100） |
+| `numbering` | 題號連續、不重複 | `restart`: `auto` / `always` / `never` |
+| `choice-options` | 選擇題選項數量、順序、重複 | `count`: `4` 或 `[4, 5]` |
+| `answer-leftover` | 題號前的作答括號不可有答案 | — |
+| `bracket-balance` | 括號、引號成對 | — |
+| `exam-title` | 標題的學校名稱、學年度、學期、年級、考試類型，以及中英文標題是否一致 | `schoolZh`、`schoolEn`、`academicYear`（`"auto"`／`"2026-2027"`／`"off"`）、`semester`（`"auto"`／`1`／`2`／`"off"`）、`examType`（`midterm`／`final`／`quiz`／`mock`）、`grade`、`within` |
+| `subject-name` | 試卷開頭的中英文科目名稱是否寫錯、拼錯（G1–G12 常見科目，清單在 `src/lib/rules/subjects.ts`） | `within`（預設 5 段）、`extraSubjects`、`ignore`、`requireSubject` |
+| `regex` | 自訂正規表示式 | `pattern` 或 `patterns`、`mode`: `forbid` / `require`、`within`、`flags`、`maxReports` |
+
+## 專案結構
+
+```
+src/lib/docx/       解析 .docx（JSZip + XML，含 Word 自動編號還原）
+src/lib/structure.ts 辨識大題、題目、配分
+src/lib/rules/      規則引擎、內建規則、預設規則檔
+src/components/     網頁介面
+scripts/            產生範例試卷
+```
+
+## 已知限制
+
+- 不支援舊版 `.doc`，請先另存為 `.docx`
+- 圖片中的文字、文字方塊的版面位置不會檢查
+- 方程式只擷取文字內容

@@ -1,0 +1,102 @@
+# 試卷審題規則檔（TOML 格式）
+# severity（嚴重程度）："error" = 不通過、"warning" = 警告、"info" = 提醒
+# 不想用的規則可以加上 enabled = false
+# 每一條規則以 [[rules]] 開頭
+
+name = "完整規則（測試用）"
+
+# ── 結構檢查 ──────────────────────────────
+
+[[rules]]
+id = "total-score"
+type = "score-sum"
+expect = 100              # 全卷總分
+severity = "error"
+
+[[rules]]
+id = "question-numbering"
+type = "numbering"
+restart = "auto"          # auto：每大題可從 1 開始或接續；always：都從 1 開始；never：全卷連續
+severity = "error"
+
+[[rules]]
+id = "choice-options"
+type = "choice-options"
+count = 4                 # 多選題可寫 [4, 5]
+severity = "error"
+
+[[rules]]
+id = "answer-leftover"
+type = "answer-leftover"
+severity = "error"
+
+# ── 試卷標題 ──────────────────────────────
+# 每次出題前，請確認 examType（考試類型）是否正確
+
+[[rules]]
+id = "exam-title"
+type = "exam-title"
+within = 5                                   # 只看前 5 個段落（試卷標題）
+schoolZh = "越華國際學校"
+schoolEn = "Viet Hoa International School"
+academicYear = "auto"     # "auto" 依今天日期推算（8 月起為新學年），或寫 "2026-2027"，"off" 不檢查
+semester = "auto"         # "auto"：8 月～1 月為第 1 學期、2～7 月為第 2 學期；或寫 1、2；"off" 不檢查
+examType = "final"        # midterm 期中 / final 期末 / quiz 小考 / mock 模擬考；刪掉這行則只檢查中英文是否一致
+# grade = 10              # 年級；不寫則只檢查中英文年級是否一致
+severity = "error"
+
+# ── 版面資訊 ──────────────────────────────
+
+[[rules]]
+id = "header-fields"
+type = "regex"
+mode = "require"
+within = 10               # 只看前 10 個段落
+patterns = ["班級", "座號", "姓名"]
+severity = "warning"
+message = "試卷開頭缺少基本資料欄位"
+
+[[rules]]
+id = "subject-name"
+type = "subject-name"     # 檢查中英文科目名稱是否寫錯、拼錯（G1–G12 常見科目）
+within = 5                # 只看前 5 個段落（試卷標題）
+severity = "warning"
+# extraSubjects = ["數學甲", "AP Calculus"]   # 學校自訂的科目名稱
+# ignore = ["英聽"]                            # 不要檢查的字
+# requireSubject = false                       # 找不到科目名稱時不提醒
+
+# ── 文字檢查 ──────────────────────────────
+# 正規表示式請用單引號 '...'，反斜線不需要寫兩次
+
+[[rules]]
+id = "answer-in-paper"
+type = "regex"
+pattern = '(答案|解答|詳解|解析)\s*[:：]|【(答案|解析|詳解)】'
+severity = "error"
+message = "試卷中疑似留有答案或解析"
+
+[[rules]]
+id = "bracket-balance"
+type = "bracket-balance"
+severity = "warning"
+
+[[rules]]
+id = "halfwidth-punctuation"
+type = "regex"
+pattern = '(?<=[一-鿿])[,;:?!]'
+severity = "info"
+message = "中文後面使用了半形標點，建議改用全形"
+
+[[rules]]
+id = "repeated-punctuation"
+type = "regex"
+pattern = '([，。、；：？！])\1+'
+severity = "warning"
+message = "標點符號重複"
+
+[[rules]]
+id = "placeholder-text"
+type = "regex"
+pattern = 'XXX|ＸＸＸ|待補|TODO'
+severity = "warning"
+message = "試卷中留有待補文字"
