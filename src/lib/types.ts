@@ -35,8 +35,13 @@ export interface Section {
   /** 標題所在段落；-1 代表沒有大題標題（題目出現在任何大題之前） */
   paragraphIndex: number;
   kind: SectionKind;
+  /** 每題分數；「每格 X 分」也算每題（一格就是一題） */
   perQuestionScore?: number;
   totalScore?: number;
+  /** 中英文配分描述彼此矛盾，例如「每格 2 分｜3 points each」 */
+  scoreConflicts?: string[];
+  /** 大題標題下一行的配分說明段落 */
+  scoreLines?: number[];
   questions: Question[];
 }
 

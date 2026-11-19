@@ -20,7 +20,8 @@ export function DocumentView({ doc, result, selected, onSelect }: Props) {
       if (i.paragraphIndex === undefined) continue;
       byPara.set(i.paragraphIndex, [...(byPara.get(i.paragraphIndex) ?? []), i]);
     }
-    const sectionAt = new Set(result.structure.sections.map((s) => s.paragraphIndex));
+    // 大題標題，以及標題下一行的配分說明
+    const sectionAt = new Set(result.structure.sections.flatMap((s) => [s.paragraphIndex, ...(s.scoreLines ?? [])]));
     const questionAt = new Set(result.structure.sections.flatMap((s) => s.questions.map((q) => q.startParagraph)));
     const instructionAt = new Set(result.structure.instructions);
     return { byPara, sectionAt, questionAt, instructionAt };

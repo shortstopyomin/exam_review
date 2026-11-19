@@ -32,27 +32,61 @@ const QUESTION_RE =
 const N = "(\\d+(?:\\.\\d+)?)";
 const PTS = "(?:points?|pts?\\.?|marks?)";
 
-// 只認「每題／每小題」；「每格」無法換算成題數，改看「共 Y 分」
-// 英文：「5 points each」「each question 5 points」「5 pts/question」
-const PER_SCORE_RES = [
-  new RegExp(`每小?題\\s*${N}\\s*分`),
-  new RegExp(`${N}\\s*${PTS}\\s*(?:each|per\\s+question|/\\s*question|for\\s+each)`, "i"),
-  new RegExp(`each(?:\\s+question)?(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
+export interface ScoreText {
+  perQuestion?: number;
+  total?: number;
+  conflicts: string[];
+}
+
+/**
+ * 每題配分：「每題 5 分」「每小題 5 分」。
+ * 「每格 2 分」「每空 2 分」也是每題：本校試卷一格就是一題。
+ */
+const ZH_PER_QUESTION = new RegExp(`每(?:小?題|(?:一|個)?(?:格|空格?|小格))\\s*${N}\\s*分`);
+const ZH_TOTAL = new RegExp(`共\\s*${N}\\s*分`);
+/** 「5 points each」「2 points per blank」「each question is worth 5 points」 */
+const EN_PER_QUESTION = [
+  new RegExp(`${N}\\s*${PTS}\\s*(?:each|apiece|per\\s+(?:question|blank)|/\\s*(?:question|blank)|for\\s+each)`, "i"),
+  new RegExp(`each(?:\\s+(?:question|blank))?(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
 ];
 // 英文：「60 points total」「total 60 points」「Total: 60」「(60 marks)」
-const TOTAL_SCORE_RES = [
-  new RegExp(`共\\s*${N}\\s*分`),
+const EN_TOTAL = [
   new RegExp(`${N}\\s*${PTS}\\s*(?:in\\s+)?total`, "i"),
   new RegExp(`total(?:\\s+of)?\\s*[:：]?\\s*${N}(?:\\s*${PTS})?`, "i"),
   new RegExp(`[(（]\\s*${N}\\s*${PTS}\\s*[)）]`, "i"),
 ];
 
-function firstNum(text: string, res: RegExp[]): number | undefined {
-  for (const re of res) {
+function firstMatch(text: string, res: RegExp | RegExp[]): { value: number; text: string } | undefined {
+  for (const re of ([] as RegExp[]).concat(res)) {
     const m = text.match(re);
-    if (m) return Number(m[1]);
+    if (m) return { value: Number(m[1]), text: m[0].trim() };
   }
   return undefined;
+}
+
+/**
+ * 解析配分描述，例如：
+ * 「每題5分，共60分」「每格 2 分、共 30 分｜2 points each, 30 points total」
+ * 「5 points each, 60 points total」
+ * 中英文都有寫時，比對兩邊的分數是否一致。
+ */
+export function parseScoreText(text: string): ScoreText {
+  const zhPer = firstMatch(text, ZH_PER_QUESTION);
+  const zhTotal = firstMatch(text, ZH_TOTAL);
+  const enPer = firstMatch(text, EN_PER_QUESTION);
+  const enTotal = firstMatch(text, EN_TOTAL);
+  const conflicts: string[] = [];
+  if (zhPer && enPer && zhPer.value !== enPer.value) {
+    conflicts.push(`中文寫「${zhPer.text}」，英文寫「${enPer.text}」，每題分數不一致`);
+  }
+  if (zhTotal && enTotal && zhTotal.value !== enTotal.value) {
+    conflicts.push(`中文寫「${zhTotal.text}」，英文寫「${enTotal.text}」，總分不一致`);
+  }
+  return { perQuestion: zhPer?.value ?? enPer?.value, total: zhTotal?.value ?? enTotal?.value, conflicts };
+}
+
+function hasScore(s: ScoreText) {
+  return s.perQuestion !== undefined || s.total !== undefined;
 }
 
 /** 單題配分：「（8 分）」「(5 points)」「[5 marks]」 */
@@ -147,12 +181,25 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
         title: text,
         paragraphIndex: p.index,
         kind: detectKind(sec),
-        perQuestionScore: firstNum(text, PER_SCORE_RES),
-        totalScore: firstNum(text, TOTAL_SCORE_RES),
+        ...scoreFields(parseScoreText(text)),
         questions: [],
       };
       sections.push(current);
       continue;
+    }
+
+    // 配分寫在大題標題的下一行（第一題之前），例如：
+    // 「Part 3 填充題 / Fill in the blanks」
+    // 「每格 2 分、共 30 分｜2 points each, 30 points total」
+    if (current && !current.questions.length && !question && !parseQuestionStart(text)) {
+      const score = parseScoreText(text);
+      if (hasScore(score)) {
+        current.perQuestionScore ??= score.perQuestion;
+        current.totalScore ??= score.total;
+        if (score.conflicts.length) current.scoreConflicts = [...(current.scoreConflicts ?? []), ...score.conflicts];
+        current.scoreLines = [...(current.scoreLines ?? []), p.index];
+        continue;
+      }
     }
 
     const q = parseQuestionStart(text);
@@ -191,6 +238,14 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
   }
   finishQuestion();
   return { sections, instructions };
+}
+
+function scoreFields(score: ScoreText): Partial<Section> {
+  return {
+    perQuestionScore: score.perQuestion,
+    totalScore: score.total,
+    ...(score.conflicts.length ? { scoreConflicts: score.conflicts } : {}),
+  };
 }
 
 /** 依大題配分推算該大題總分；無法判斷時回傳 undefined */

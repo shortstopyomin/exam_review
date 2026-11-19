@@ -40,6 +40,7 @@ const SCORE_SUM: RuleDefinition = {
       if (!s.questions.length && s.paragraphIndex === -1) continue;
       const { total, computed } = sectionScore(s);
       const at = { paragraphIndex: s.paragraphIndex >= 0 ? s.paragraphIndex : s.questions[0]?.startParagraph, excerpt: short(s.title) };
+      for (const c of s.scoreConflicts ?? []) report(`「${short(s.title, 20)}」配分說明中英文不一致：${c}`, at);
       if (s.totalScore !== undefined && computed !== undefined && Math.abs(s.totalScore - computed) > 1e-9) {
         const how =
           s.perQuestionScore !== undefined
