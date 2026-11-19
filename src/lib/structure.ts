@@ -34,20 +34,30 @@ const PTS = "(?:points?|pts?\\.?|marks?)";
 
 export interface ScoreText {
   perQuestion?: number;
+  /** 「每格 X 分」：試卷上有實際的格子「( )」，總分 = 每格分數 × 格子數 */
+  perBlank?: number;
   total?: number;
   conflicts: string[];
 }
 
-/**
- * 每題配分：「每題 5 分」「每小題 5 分」。
- * 「每格 2 分」「每空 2 分」也是每題：本校試卷一格就是一題。
- */
-const ZH_PER_QUESTION = new RegExp(`每(?:小?題|(?:一|個)?(?:格|空格?|小格))\\s*${N}\\s*分`);
+const ZH_PER_QUESTION = new RegExp(`每小?題\\s*${N}\\s*分`);
+/** 「每格 2 分」「每空 2 分」「每個空格 2 分」 */
+const ZH_PER_BLANK = new RegExp(`每(?:一|個)?(?:格|空格?|小格)\\s*${N}\\s*分`);
 const ZH_TOTAL = new RegExp(`共\\s*${N}\\s*分`);
-/** 「5 points each」「2 points per blank」「each question is worth 5 points」 */
+/** 「2 points per blank」「each blank is worth 2 points」 */
+const EN_PER_BLANK = [
+  new RegExp(`${N}\\s*${PTS}\\s*(?:per|for\\s+each|each|/)\\s*(?:blank|box)`, "i"),
+  new RegExp(`each\\s+(?:blank|box)(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
+];
+/** 「5 points per question」「each question is worth 5 points」 */
 const EN_PER_QUESTION = [
-  new RegExp(`${N}\\s*${PTS}\\s*(?:each|apiece|per\\s+(?:question|blank)|/\\s*(?:question|blank)|for\\s+each)`, "i"),
-  new RegExp(`each(?:\\s+(?:question|blank))?(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
+  new RegExp(`${N}\\s*${PTS}\\s*(?:per\\s+question|/\\s*question|for\\s+each\\s+question|each\\s+question)`, "i"),
+  new RegExp(`each\\s+question(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
+];
+/** 「2 points each」：沒說是每題還是每格，跟著中文描述的單位 */
+const EN_PER_EACH = [
+  new RegExp(`${N}\\s*${PTS}\\s*(?:each|apiece)(?!\\s+(?:question|blank|box))`, "i"),
+  new RegExp(`each(?:\\s+is)?(?:\\s+worth)?\\s*[:：]?\\s*${N}\\s*${PTS}`, "i"),
 ];
 // 英文：「60 points total」「total 60 points」「Total: 60」「(60 marks)」
 const EN_TOTAL = [
@@ -68,25 +78,51 @@ function firstMatch(text: string, res: RegExp | RegExp[]): { value: number; text
  * 解析配分描述，例如：
  * 「每題5分，共60分」「每格 2 分、共 30 分｜2 points each, 30 points total」
  * 「5 points each, 60 points total」
- * 中英文都有寫時，比對兩邊的分數是否一致。
+ * 中英文都有寫時，比對兩邊的分數、單位是否一致。
  */
 export function parseScoreText(text: string): ScoreText {
-  const zhPer = firstMatch(text, ZH_PER_QUESTION);
-  const zhTotal = firstMatch(text, ZH_TOTAL);
-  const enPer = firstMatch(text, EN_PER_QUESTION);
-  const enTotal = firstMatch(text, EN_TOTAL);
+  const zhQ = firstMatch(text, ZH_PER_QUESTION);
+  const zhB = firstMatch(text, ZH_PER_BLANK);
+  const zhT = firstMatch(text, ZH_TOTAL);
+  const enB = firstMatch(text, EN_PER_BLANK);
+  const enQ = firstMatch(text, EN_PER_QUESTION);
+  const enE = enB || enQ ? undefined : firstMatch(text, EN_PER_EACH);
+  const enT = firstMatch(text, EN_TOTAL);
   const conflicts: string[] = [];
+
+  // 英文「each」的單位跟著中文：每格 → 每格；每題或沒寫 → 每題
+  const zhUnit = zhB ? "blank" : zhQ ? "question" : undefined;
+  const enPerBlank = enB ?? (enE && zhUnit === "blank" ? enE : undefined);
+  const enPerQuestion = enQ ?? (enE && zhUnit !== "blank" ? enE : undefined);
+
+  if (zhB && enQ) conflicts.push(`中文寫「${zhB.text}」（每格），英文寫「${enQ.text}」（每題），單位不一致`);
+  if (zhQ && enB) conflicts.push(`中文寫「${zhQ.text}」（每題），英文寫「${enB.text}」（每格），單位不一致`);
+  const zhPer = zhB ?? zhQ;
+  const enPer = enPerBlank ?? enPerQuestion;
   if (zhPer && enPer && zhPer.value !== enPer.value) {
-    conflicts.push(`中文寫「${zhPer.text}」，英文寫「${enPer.text}」，每題分數不一致`);
+    conflicts.push(`中文寫「${zhPer.text}」，英文寫「${enPer.text}」，分數不一致`);
   }
-  if (zhTotal && enTotal && zhTotal.value !== enTotal.value) {
-    conflicts.push(`中文寫「${zhTotal.text}」，英文寫「${enTotal.text}」，總分不一致`);
+  if (zhT && enT && zhT.value !== enT.value) {
+    conflicts.push(`中文寫「${zhT.text}」，英文寫「${enT.text}」，總分不一致`);
   }
-  return { perQuestion: zhPer?.value ?? enPer?.value, total: zhTotal?.value ?? enTotal?.value, conflicts };
+
+  return {
+    perQuestion: zhQ?.value ?? enPerQuestion?.value,
+    perBlank: zhB?.value ?? enPerBlank?.value,
+    total: zhT?.value ?? enT?.value,
+    conflicts,
+  };
 }
 
 function hasScore(s: ScoreText) {
-  return s.perQuestion !== undefined || s.total !== undefined;
+  return s.perQuestion !== undefined || s.perBlank !== undefined || s.total !== undefined;
+}
+
+/** 作答格子：空的括號「()」「( )」「（ ）」「（　）」 */
+const BLANK_BOX_RE = /[（(][ \t　]*[)）]/g;
+
+export function countBlanks(text: string): number {
+  return text.match(BLANK_BOX_RE)?.length ?? 0;
 }
 
 /** 單題配分：「（8 分）」「(5 points)」「[5 marks]」 */
@@ -195,6 +231,7 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
       const score = parseScoreText(text);
       if (hasScore(score)) {
         current.perQuestionScore ??= score.perQuestion;
+        current.perBlankScore ??= score.perBlank;
         current.totalScore ??= score.total;
         if (score.conflicts.length) current.scoreConflicts = [...(current.scoreConflicts ?? []), ...score.conflicts];
         current.scoreLines = [...(current.scoreLines ?? []), p.index];
@@ -227,6 +264,7 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
         startParagraph: p.index,
         endParagraph: p.index,
         body: q.rest,
+        blanks: countBlanks(text),
       };
       continue;
     }
@@ -234,6 +272,7 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
     if (question) {
       question.endParagraph = p.index;
       question.body += "\n" + text;
+      question.blanks += countBlanks(text);
     }
   }
   finishQuestion();
@@ -243,16 +282,26 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
 function scoreFields(score: ScoreText): Partial<Section> {
   return {
     perQuestionScore: score.perQuestion,
+    perBlankScore: score.perBlank,
     totalScore: score.total,
     ...(score.conflicts.length ? { scoreConflicts: score.conflicts } : {}),
   };
 }
 
-/** 依大題配分推算該大題總分；無法判斷時回傳 undefined */
-export function sectionScore(s: Section): { total?: number; computed?: number } {
+/**
+ * 依大題配分推算該大題總分；無法判斷時回傳 undefined。
+ * 「每格 X 分」會數題目中的格子「( )」（含題號前的作答括號）。
+ */
+export function sectionScore(s: Section): { total?: number; computed?: number; blanks?: number } {
   let computed: number | undefined;
-  if (s.perQuestionScore !== undefined) computed = s.perQuestionScore * s.questions.length;
-  else if (s.questions.length && s.questions.every((q) => q.score !== undefined))
+  let blanks: number | undefined;
+  if (s.perQuestionScore !== undefined) {
+    computed = s.perQuestionScore * s.questions.length;
+  } else if (s.perBlankScore !== undefined) {
+    blanks = s.questions.reduce((a, q) => a + q.blanks, 0);
+    if (blanks > 0) computed = s.perBlankScore * blanks;
+  } else if (s.questions.length && s.questions.every((q) => q.score !== undefined)) {
     computed = s.questions.reduce((a, q) => a + (q.score ?? 0), 0);
-  return { total: s.totalScore ?? computed, computed };
+  }
+  return { total: s.totalScore ?? computed, computed, blanks };
 }

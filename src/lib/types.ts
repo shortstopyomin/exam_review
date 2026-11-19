@@ -28,6 +28,8 @@ export interface Question {
   body: string;
   /** 題目中標示的配分，例如「（5分）」 */
   score?: number;
+  /** 本題的作答格子數：空括號「( )」（含題號前的作答括號） */
+  blanks: number;
 }
 
 export interface Section {
@@ -35,8 +37,9 @@ export interface Section {
   /** 標題所在段落；-1 代表沒有大題標題（題目出現在任何大題之前） */
   paragraphIndex: number;
   kind: SectionKind;
-  /** 每題分數；「每格 X 分」也算每題（一格就是一題） */
   perQuestionScore?: number;
+  /** 「每格 X 分」：每一個格子「( )」的分數，總分 = 每格分數 × 格子數 */
+  perBlankScore?: number;
   totalScore?: number;
   /** 中英文配分描述彼此矛盾，例如「每格 2 分｜3 points each」 */
   scoreConflicts?: string[];

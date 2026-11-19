@@ -182,61 +182,85 @@ describe("作答說明不算題目、不算大題", () => {
   });
 });
 
-describe("每格配分：每格 2 分、共 30 分｜2 points each, 30 points total（一格就是一題）", () => {
+describe("每格配分：每格 2 分、共 30 分｜2 points each, 30 points total（核對格子數）", () => {
   const SCORE = "每格 2 分、共 30 分｜2 points each, 30 points total";
   const rule30 = parseRuleSet('[[rules]]\nid = "total-score"\ntype = "score-sum"\nexpect = 30');
   const issues30 = (lines: string[]) => lint(doc(lines), rule30).issues.map((i) => i.message);
-  const fillQuestions = (n: number) => range(1, n).map((k) => `${k}. ${k} + 1 = ____。`);
+  /** n 題，每題 boxes 個格子 */
+  const fill = (n: number, box = "( )", boxes = 1) =>
+    range(1, n).map((k) => `${k}. ${range(1, boxes).map((b) => `${k} + ${b} = ${box}`).join("，")}。`);
 
-  it("寫在大題標題裡：讀成每題 2 分、共 30 分", () => {
-    const s = analyzeStructure(doc([`三、填充題（${SCORE}）`, ...fillQuestions(1)]).paragraphs).sections[0];
-    expect(s).toMatchObject({ kind: "fill", perQuestionScore: 2, totalScore: 30 });
+  it("寫在大題標題裡：讀成每格 2 分、共 30 分", () => {
+    const s = analyzeStructure(doc([`三、填充題（${SCORE}）`, ...fill(1)]).paragraphs).sections[0];
+    expect(s).toMatchObject({ kind: "fill", perBlankScore: 2, perQuestionScore: undefined, totalScore: 30 });
     expect(s.scoreConflicts).toBeUndefined();
   });
 
   it("寫在大題標題的下一行：也讀得到，且那一行不算題目", () => {
-    const lines = ["Part 3 填充題 / Fill in the blanks", SCORE, ...fillQuestions(1)];
-    const s = analyzeStructure(doc(lines).paragraphs).sections[0];
-    expect(s).toMatchObject({ kind: "fill", perQuestionScore: 2, totalScore: 30, scoreLines: [1] });
+    const s = analyzeStructure(doc(["Part 3 填充題 / Fill in the blanks", SCORE, ...fill(1)]).paragraphs).sections[0];
+    expect(s).toMatchObject({ kind: "fill", perBlankScore: 2, totalScore: 30, scoreLines: [1] });
     expect(s.questions).toHaveLength(1);
   });
 
-  it("15 題 × 2 分 = 30 分 → 通過", () => {
-    expect(issues30(["Part 3 填充題 / Fill in the blanks", SCORE, ...fillQuestions(15)])).toEqual([]);
-    expect(issues30([`三、填充題（${SCORE}）`, ...fillQuestions(15)])).toEqual([]);
+  it.each(["()", "( )", "(  )", "（）", "（ ）", "（　）", "（　　）"])("格子寫成 %s 都算", (box) => {
+    expect(issues30(["Part 3 填充題 / Fill in the blanks", SCORE, ...fill(15, box)])).toEqual([]);
   });
 
-  it("少一題：14 題 × 2 分 = 28 分，與「共 30 分」不符", () => {
-    expect(issues30(["Part 3 填充題 / Fill in the blanks", SCORE, ...fillQuestions(14)])).toEqual([
-      expect.stringContaining("標示共 30 分，但每題 2 分 × 14 題 = 28 分"),
+  it("15 格 × 2 分 = 30 分 → 通過；一題可以有好幾格", () => {
+    // 7 題各 2 格 + 1 題 1 格 = 15 格
+    const lines = [`三、填充題（${SCORE}）`, ...fill(7, "( )", 2), "8. 9 + 1 = ( )。"];
+    expect(issues30(lines)).toEqual([]);
+  });
+
+  it("題號前的作答格子「( )1.」也算", () => {
+    const lines = [`三、填充題（${SCORE}）`, ...range(1, 15).map((k) => `( )${k}. 題目 ${k}`)];
+    expect(issues30(lines)).toEqual([]);
+  });
+
+  it("少一格：14 格 × 2 分 = 28 分，與「共 30 分」不符", () => {
+    expect(issues30([`三、填充題（${SCORE}）`, ...fill(14)])).toEqual([
+      expect.stringContaining("標示共 30 分，但每格 2 分 × 14 格 = 28 分"),
     ]);
   });
 
-  it("多一題：16 題 × 2 分 = 32 分，與「共 30 分」不符", () => {
-    expect(issues30([`三、填充題（${SCORE}）`, ...fillQuestions(16)])).toEqual([
-      expect.stringContaining("標示共 30 分，但每題 2 分 × 16 題 = 32 分"),
+  it("多一格：16 格 × 2 分 = 32 分，與「共 30 分」不符", () => {
+    expect(issues30(["Part 3 填充題 / Fill in the blanks", SCORE, ...fill(8, "( )", 2)])).toEqual([
+      expect.stringContaining("標示共 30 分，但每格 2 分 × 16 格 = 32 分"),
     ]);
+  });
+
+  it("寫了每格，卻找不到任何格子", () => {
+    const msgs = issues30([`三、填充題（${SCORE}）`, "1. 3 + 4 = ____。", "2. 5 + 6 = ____。"]);
+    expect(msgs).toEqual([expect.stringContaining("標示每格 2 分，但題目中找不到任何格子「( )」")]);
+  });
+
+  it("有內容的括號不算格子：(A)、(-3)、(5分)", () => {
+    const s = analyzeStructure(
+      doc(["三、填充題（每格 2 分）", "1. 計算 12 ÷ (-3) = ( )。（5分）", "2. 選出 (A) 或 (B)：( )"]).paragraphs,
+    ).sections[0];
+    expect(s.questions.map((q) => q.blanks)).toEqual([1, 1]);
   });
 
   it.each(["每格 2 分，共 30 分", "每空 2 分，共 30 分", "每個空格 2 分，共 30 分", "2 points per blank, 30 points total"])(
     "其他寫法：%s",
     (score) => {
-      const s = analyzeStructure(doc([`三、填充題（${score}）`, "1. ____"]).paragraphs).sections[0];
-      expect(s).toMatchObject({ perQuestionScore: 2, totalScore: 30 });
+      const s = analyzeStructure(doc([`三、填充題（${score}）`, "1. ( )"]).paragraphs).sections[0];
+      expect(s).toMatchObject({ perBlankScore: 2, totalScore: 30 });
     },
   );
 
-  it("每題的寫法照舊：每題 5 分、共 60 分｜5 points each, 60 points total", () => {
-    const s = analyzeStructure(doc(["Part 2 計算題", "每題 5 分、共 60 分｜5 points each, 60 points total", "1. 計算"]).paragraphs)
+  it("每題的寫法照舊算題數：每題 5 分、共 60 分｜5 points each, 60 points total", () => {
+    const s = analyzeStructure(doc(["Part 2 計算題", "每題 5 分、共 60 分｜5 points each, 60 points total", "1. ( ) ( )"]).paragraphs)
       .sections[0];
-    expect(s).toMatchObject({ perQuestionScore: 5, totalScore: 60 });
+    expect(s).toMatchObject({ perQuestionScore: 5, perBlankScore: undefined, totalScore: 60 });
   });
 
   it.each([
-    ["每格 2 分、共 30 分｜3 points each, 30 points total", "每題分數不一致"],
+    ["每格 2 分、共 30 分｜3 points each, 30 points total", "分數不一致"],
     ["每格 2 分、共 30 分｜2 points each, 40 points total", "總分不一致"],
+    ["每格 2 分、共 30 分｜2 points per question, 30 points total", "單位不一致"],
   ])("中英文不一致會回報：%s", (score, expected) => {
-    const msgs = issues30(["Part 3 填充題 / Fill in the blanks", score, ...fillQuestions(15)]);
+    const msgs = issues30(["Part 3 填充題 / Fill in the blanks", score, ...fill(15)]);
     expect(msgs.some((m) => m.includes("配分說明中英文不一致") && m.includes(expected))).toBe(true);
   });
 });
