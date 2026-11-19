@@ -28,10 +28,11 @@ npm run sample     # 重新產生範例試卷 public/samples/sample-exam.docx
 
 | 項目 | 範例 |
 |---|---|
-| 大題標題 | `一、選擇題（每題 4 分，共 40 分）` |
+| 大題標題 | `一、選擇題（每題 4 分，共 40 分）`、`貳、非選擇題`、`第二部分 計算題`、`Part 2計算題和應用題 / Calculation and word problems (每題5分，共60分)`、`Part II: Word Problems`、`Section B - Multiple Choice` |
+| 大題配分（英文） | `5 points each`、`60 points total`、`Total: 60`、`(60 marks)` |
 | 題目 | `1.`、`1、`、`( )1.`、`（　）12．` |
 | 選擇題選項 | `(A) … (B) …`（可同一行或分行）、`A. …`（需在行首） |
-| 單題配分 | 題目中的 `（8 分）` |
+| 單題配分 | 題目中的 `（8 分）`、`(5 points)`、`[5 marks]` |
 
 大題配分的判斷順序：「共 Y 分」→「每題 X 分 × 題數」→ 各題「（X 分）」加總。
 
