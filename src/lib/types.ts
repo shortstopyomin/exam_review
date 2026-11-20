@@ -1,4 +1,4 @@
-/** 從 docx 解析出來的一個段落 */
+/** 從 docx 解析出來的一個段落（PDF 則是一行文字） */
 export interface Paragraph {
   index: number;
   /** 段落文字（已含 Word 自動編號產生的題號） */
@@ -8,6 +8,11 @@ export interface Paragraph {
   inTable: boolean;
   hasMath: boolean;
   imageCount: number;
+  /**
+   * PDF：上一行沒有句尾標點且就在正上方，這行可能是換行接下去的文字。
+   * 這種行開頭的數字只有剛好是下一題的題號時才算新題目。
+   */
+  wrapped?: boolean;
 }
 
 export interface ParsedDocument {

@@ -248,7 +248,9 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
 
     // 下一題的題號：用來分辨「8.3盆仙人掌…」是第 8 題還是小數
     const expectedNext = (question?.number ?? current?.questions.at(-1)?.number ?? 0) + 1;
-    const q = parseQuestionStart(text, expectedNext);
+    const start = parseQuestionStart(text, expectedNext);
+    // PDF 換行接下去的文字剛好以數字開頭（「…number is⏎34. Her classmate…」）：不是新題目
+    const q = start && p.wrapped && start.number !== expectedNext ? null : start;
 
     // 配分寫在大題標題的下一行（第一題之前），例如：
     // 「Part 3 填充題 / Fill in the blanks」

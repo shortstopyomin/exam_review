@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseDocx, DocxParseError } from "@/lib/docx/parse";
+import { isPdf, parsePdf, PdfParseError } from "@/lib/pdf/parse";
 import { lint, parseRuleSet, RuleSetError } from "@/lib/rules/engine";
 import { DEFAULT_RULES_TOML } from "@/lib/rules/default-rules";
 import type { ParsedDocument, RuleSet } from "@/lib/types";
@@ -64,10 +65,10 @@ export function ExamReviewer() {
     setFileError(null);
     setSelected(null);
     try {
-      setDoc(await parseDocx(data, name));
+      setDoc(isPdf(data) ? await parsePdf(data, name) : await parseDocx(data, name));
     } catch (e) {
       setDoc(null);
-      setFileError(e instanceof DocxParseError ? e.message : `解析失敗：${(e as Error).message}`);
+      setFileError(e instanceof DocxParseError || e instanceof PdfParseError ? e.message : `解析失敗：${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -105,7 +106,7 @@ export function ExamReviewer() {
       <header className="app-header">
         <div>
           <h1>試卷審題小幫手</h1>
-          <p className="muted">上傳 Word 試卷，依規則檔自動檢查題號、配分、選項與文字。檔案只在你的瀏覽器中處理，不會上傳到任何伺服器。</p>
+          <p className="muted">上傳 PDF 或 Word 試卷，依規則檔自動檢查題號、配分、選項與文字。檔案只在你的瀏覽器中處理，不會上傳到任何伺服器。</p>
         </div>
       </header>
 
@@ -130,13 +131,13 @@ export function ExamReviewer() {
               tabIndex={0}
               onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInput.current?.click()}
             >
-              <strong>{loading ? "解析中…" : doc ? doc.fileName : "點這裡選擇或拖放 .docx 檔"}</strong>
-              <span className="muted small">{doc ? "點擊可更換檔案" : "僅支援 Word 2007 以後的 .docx 格式"}</span>
+              <strong>{loading ? "解析中…" : doc ? doc.fileName : "點這裡選擇或拖放 .docx 或 .pdf 檔"}</strong>
+              <span className="muted small">{doc ? "點擊可更換檔案" : "支援 Word 2007 以後的 .docx 與可選取文字的 PDF"}</span>
             </div>
             <input
               ref={fileInput}
               type="file"
-              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
               hidden
               onChange={(e) => {
                 handleFiles(e.target.files);
@@ -172,7 +173,7 @@ export function ExamReviewer() {
                 onJump={jumpTo}
                 onDownload={() =>
                   download(
-                    `${doc.fileName.replace(/\.docx$/i, "")}-審題報告.md`,
+                    `${doc.fileName.replace(/\.(docx|pdf)$/i, "")}-審題報告.md`,
                     buildReport(doc, result, ruleParse.set!.name),
                   )
                 }
