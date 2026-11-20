@@ -28,6 +28,8 @@
 * { box-sizing: border-box; }
 
 html, body { margin: 0; }
+/* iPhone 橫向時 Safari 不要自動放大文字 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
   background: var(--bg);
@@ -150,6 +152,8 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
 .structure tbody tr:hover { background: var(--surface-2); }
 .structure tfoot td { font-weight: 600; border-bottom: none; }
 .structure .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 除了大題名稱，其他欄位不換行（手機上「題號」「1–11」不要被擠成一字一行） */
+.structure th, .structure td:not(:first-child) { white-space: nowrap; }
 
 .filters { display: flex; gap: 4px; flex-wrap: wrap; }
 .filters button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
@@ -235,3 +239,32 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
 .structure tbody tr:hover { background: var(--accent-soft); }
 .link-btn { font-weight: 600; }
 .para.is-instruction { color: var(--muted); font-style: italic; }
+
+/* ── 手機版 ─────────────────────────────── */
+@media (max-width: 600px) {
+  .app { padding: 12px 12px 32px; }
+  .layout, .side, .main { gap: 14px; }
+  .app-header { padding: 14px 16px 12px; margin-bottom: 14px; }
+  .app-header h1 { font-size: 1.25rem; }
+  .app-header p { font-size: 0.8rem; line-height: 1.5; }
+  .app-header p + p { margin-top: 4px; }
+  .card { padding: 14px; }
+  .card.empty { padding: 32px 14px; }
+  .dropzone { padding: 18px 12px; }
+  .structure th, .structure td { padding: 6px 5px; }
+  .doc { padding: 10px; }
+  .para { padding: 3px 6px; }
+  /* iOS Safari：輸入框字小於 16px 時，點進去會自動放大整頁 */
+  .rules-editor { font-size: 16px; min-height: 280px; }
+}
+
+/* ── 手機橫向（畫面很矮）─────────────────── */
+@media (max-height: 500px) {
+  .app-header { padding: 12px 16px 10px; margin-bottom: 14px; }
+  .app-header h1 { font-size: 1.2rem; }
+  .app-header .title-alt { display: inline; margin-left: 10px; }
+  .app-header p { font-size: 0.8rem; line-height: 1.45; max-width: none; }
+  .app-header p + p { margin-top: 2px; }
+  /* 左欄比畫面還高時，固定在畫面上會看不到下半部 */
+  .side { position: static; }
+}

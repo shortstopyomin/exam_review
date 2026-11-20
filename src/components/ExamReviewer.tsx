@@ -60,6 +60,14 @@ export function ExamReviewer() {
     [doc, ruleParse.set],
   );
 
+  const mainRef = useRef<HTMLElement>(null);
+  // 手機版（單欄）結果在上傳區、規則檔下方，上傳完自動捲到結果
+  useEffect(() => {
+    if (doc && window.matchMedia("(max-width: 900px)").matches) {
+      mainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [doc]);
+
   async function openFile(data: ArrayBuffer, name: string) {
     setLoading(true);
     setFileError(null);
@@ -192,7 +200,7 @@ export function ExamReviewer() {
           />
         </aside>
 
-        <main className="main">
+        <main className="main" ref={mainRef}>
           {!doc && !loading && (
             <div className="card empty">
               <p>上傳試卷後，檢查結果會顯示在這裡。</p>
