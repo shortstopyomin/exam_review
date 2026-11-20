@@ -29,7 +29,7 @@ function validateRegex(c: RuleConfig, key: string): string | undefined {
 }
 
 const SCORE_SUM: RuleDefinition = {
-  description: "各大題配分加總需等於指定分數；並檢查「每題 X 分」×題數是否與「共 Y 分」相符",
+  description: "各大題配分加總需等於指定分數（不檢查各大題的題數 × 每題配分）",
   defaultSeverity: "error",
   validate: (c) => (c.expect !== undefined && typeof c.expect !== "number" ? "expect 必須是數字" : undefined),
   run({ structure, config, report }) {
@@ -38,16 +38,9 @@ const SCORE_SUM: RuleDefinition = {
     let unknown = false;
     for (const s of structure.sections) {
       if (!s.questions.length && s.paragraphIndex === -1) continue;
-      const { total, computed } = sectionScore(s);
+      const { total } = sectionScore(s);
       const at = { paragraphIndex: s.paragraphIndex >= 0 ? s.paragraphIndex : s.questions[0]?.startParagraph, excerpt: short(s.title) };
       for (const c of s.scoreConflicts ?? []) report(`「${short(s.title, 20)}」配分說明中英文不一致：${c}`, at);
-      if (s.totalScore !== undefined && computed !== undefined && Math.abs(s.totalScore - computed) > 1e-9) {
-        const how =
-          s.perQuestionScore !== undefined
-            ? `每題 ${s.perQuestionScore} 分 × ${s.questions.length} 題 = ${computed} 分`
-            : `各題配分加總為 ${computed} 分`;
-        report(`「${short(s.title, 20)}」標示共 ${s.totalScore} 分，但${how}`, at);
-      }
       if (total === undefined) {
         unknown = true;
         report(`無法判斷「${short(s.title, 20)}」的配分，請在大題標題標示「每題 X 分」或「共 Y 分」`, at);

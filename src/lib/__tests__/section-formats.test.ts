@@ -53,16 +53,8 @@ describe("使用者提供的 Part 2 標題", () => {
     expect(scoreIssues(mathExam(12))).toEqual([]);
   });
 
-  it("少一題：11 題 × 5 分 = 55 分，與「共 60 分」不符", () => {
-    expect(scoreIssues(mathExam(11))).toEqual([
-      expect.stringContaining("標示共 60 分，但每題 5 分 × 11 題 = 55 分"),
-    ]);
-  });
-
-  it("多一題：13 題 × 5 分 = 65 分，與「共 60 分」不符", () => {
-    expect(scoreIssues(mathExam(13))).toEqual([
-      expect.stringContaining("標示共 60 分，但每題 5 分 × 13 題 = 65 分"),
-    ]);
+  it.each([11, 13])("題數不符（%i 題 × 5 分）不再檢查，只看大題標示的「共 60 分」", (n) => {
+    expect(scoreIssues(mathExam(n))).toEqual([]);
   });
 
   it("標示的分數本身加起來不是 100", () => {
@@ -213,7 +205,7 @@ describe("每格配分：每格 2 分、共 30 分｜2 points each, 30 points to
   it("「2 points each」不會被當成每題 2 分 × 題數", () => {
     const s = analyzeStructure(doc([`三、填充題（${SCORE}）`, ...fill(3)]).paragraphs).sections[0];
     expect(s.perQuestionScore).toBeUndefined();
-    expect(sectionScore(s)).toEqual({ total: 30, computed: undefined });
+    expect(sectionScore(s)).toEqual({ total: 30 });
   });
 
   it("全卷總分仍然要檢查：40 + 30 + 20 = 90 ≠ 100", () => {

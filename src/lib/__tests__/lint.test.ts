@@ -50,7 +50,6 @@ describe("範例試卷（端對端）", async () => {
         expect.stringMatching(/^choice-options: 第 3 題有 3 個選項/),
         expect.stringMatching(/^choice-options: 第 6 題選項 \(A\) 與 \(C\) 內容相同/),
         expect.stringMatching(/^answer-leftover: 第 5 題/),
-        expect.stringMatching(/^total-score: .*標示共 16 分，但各題配分加總為 14 分/),
         expect.stringMatching(/^halfwidth-punctuation:/),
         expect.stringMatching(/^repeated-punctuation:/),
         expect.stringMatching(/^bracket-balance:/),
@@ -60,6 +59,10 @@ describe("範例試卷（端對端）", async () => {
       ]),
     );
     expect(result.passed).toBe(false);
+  });
+
+  it("計算題標示共 16 分、各題 8 + 6 = 14 分：不分題檢查，全卷 100 分通過", () => {
+    expect(msgs.some((m) => m.startsWith("total-score"))).toBe(false);
   });
 
   it("不誤報基本資料欄位", () => {

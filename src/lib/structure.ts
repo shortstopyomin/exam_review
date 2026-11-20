@@ -280,13 +280,14 @@ function scoreFields(score: ScoreText): Partial<Section> {
 }
 
 /**
- * 依大題配分推算該大題總分；無法判斷時回傳 undefined。
- * 「每格 X 分」不換算（不數格子），大題分數採用「共 Y 分」。
+ * 大題總分：優先採用「共 Y 分」；沒寫時才用「每題 X 分 × 題數」或各題「（X 分）」加總推算。
+ * 只用來加總全卷分數，不檢查大題內的題數是否符合配分。
+ * 「每格 X 分」不換算（不數格子）。
  */
-export function sectionScore(s: Section): { total?: number; computed?: number } {
-  let computed: number | undefined;
-  if (s.perQuestionScore !== undefined) computed = s.perQuestionScore * s.questions.length;
-  else if (s.perBlankScore === undefined && s.questions.length && s.questions.every((q) => q.score !== undefined))
-    computed = s.questions.reduce((a, q) => a + (q.score ?? 0), 0);
-  return { total: s.totalScore ?? computed, computed };
+export function sectionScore(s: Section): { total?: number } {
+  if (s.totalScore !== undefined) return { total: s.totalScore };
+  if (s.perQuestionScore !== undefined) return { total: s.perQuestionScore * s.questions.length };
+  if (s.perBlankScore === undefined && s.questions.length && s.questions.every((q) => q.score !== undefined))
+    return { total: s.questions.reduce((a, q) => a + (q.score ?? 0), 0) };
+  return {};
 }
