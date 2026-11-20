@@ -55,6 +55,8 @@ const ZH_PER_QUESTION = new RegExp(`每小?題\\s*${N}\\s*分`);
 /** 「每格 2 分」「每空 2 分」「每個空格 2 分」 */
 const ZH_PER_BLANK = new RegExp(`每(?:一|個)?(?:格|空格?|小格)\\s*${N}\\s*分`);
 const ZH_TOTAL = new RegExp(`共\\s*${N}\\s*分`);
+/** 大題配分用百分比：「(40％，每題4分)」「(15%)」，等同共 40 分 */
+const PERCENT_TOTAL = new RegExp(`${N}\\s*[%％]`);
 /** 「2 points per blank」「each blank is worth 2 points」 */
 const EN_PER_BLANK = [
   new RegExp(`${N}\\s*${PTS}\\s*(?:per|for\\s+each|each|/)\\s*(?:blank|box)`, "i"),
@@ -89,6 +91,7 @@ function firstMatch(text: string, res: RegExp | RegExp[]): { value: number; text
  * 解析配分描述，例如：
  * 「每題5分，共60分」「每格 2 分、共 30 分｜2 points each, 30 points total」
  * 「5 points each, 60 points total」
+ * 「(40％，每題4分)」：百分比當成大題總分
  * 中英文都有寫時，比對兩邊的分數、單位是否一致。
  */
 export function parseScoreText(text: string): ScoreText {
@@ -99,6 +102,7 @@ export function parseScoreText(text: string): ScoreText {
   const enQ = firstMatch(text, EN_PER_QUESTION);
   const enE = enB || enQ ? undefined : firstMatch(text, EN_PER_EACH);
   const enT = firstMatch(text, EN_TOTAL);
+  const pctT = zhT || enT ? undefined : firstMatch(text, PERCENT_TOTAL);
   const conflicts: string[] = [];
 
   // 英文「each」的單位跟著中文：每格 → 每格；每題或沒寫 → 每題
@@ -120,7 +124,7 @@ export function parseScoreText(text: string): ScoreText {
   return {
     perQuestion: zhQ?.value ?? enPerQuestion?.value,
     perBlank: zhB?.value ?? enPerBlank?.value,
-    total: zhT?.value ?? enT?.value,
+    total: zhT?.value ?? enT?.value ?? pctT?.value,
     conflicts,
   };
 }

@@ -345,3 +345,34 @@ describe("題號後面直接接數字：「8.3盆仙人掌…」", () => {
     expect(s.questions.length).toBe((ls as string[]).length - 2);
   });
 });
+
+describe("大題配分用百分比：「(40％，每題4分)」", () => {
+  it.each([
+    ["一、選擇題：(40％，每題4分)", "choice", 4, 40],
+    ["二、填充題：(45％，每格3分)", "fill", undefined, 45],
+    ["三、計算題：(15％)", "short", undefined, 15],
+    ["三、計算題 (15%)", "short", undefined, 15],
+    ["一、選擇題（每題 4 分，共 40 分，佔 40%）", "choice", 4, 40],
+  ])("%s", (title, kind, per, total) => {
+    const s = analyzeStructure(doc([title, "1. 題目"]).paragraphs).sections[0];
+    expect(s).toMatchObject({ kind, perQuestionScore: per, totalScore: total });
+  });
+
+  it("「共 Y 分」優先於百分比", () => {
+    const s = analyzeStructure(doc(["一、選擇題（共 30 分，佔 40%）", "1. 題目"]).paragraphs).sections[0];
+    expect(s.totalScore).toBe(30);
+  });
+
+  it("40％ + 45％ + 15％ = 100 → 通過", () => {
+    const lines = [
+      "一、選擇題：(40％，每題4分)",
+      ...range(1, 10).map((n) => `( )${n}. 題目`),
+      "二、填充題：(45％，每格3分)",
+      ...range(1, 8).map((n) => `${n}. ＿＿＿`),
+      "三、計算題：(15％)",
+      "1. 計算 (7分)",
+      "2. 計算 (8分)",
+    ];
+    expect(scoreIssues(lines)).toEqual([]);
+  });
+});
