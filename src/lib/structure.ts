@@ -14,11 +14,22 @@ const SECTION_RES: RegExp[] = [
   /^\s*(?:part|section)\s*(?:\d{1,2}|[IVX]{1,4}|[A-H])(?![A-Za-z\d])\s*[:：.．、\-–—]?\s*(.*)$/i,
 ];
 
+/**
+ * 阿拉伯數字編號的大題：「1、 計算題：每題3分，共15分」「2、 畫畫看、做做看: 每題5分，共15分」
+ * 和題號長得一樣，所以題型名稱後面要緊接著冒號或括號與配分說明（每…分／共…分）才算大題。
+ */
+const ARABIC_SECTION_RE = /^\s*\d{1,2}\s*[、.．](?!\d)\s*([^：:（(]{1,20}?)\s*[：:（(]\s*((?:每|共).*)$/;
+
 export function matchSection(text: string): string | null {
+  // 標題段落裡可能有手動換行（Shift+Enter），例如中文標題換行接英文說明：
+  // 「一、在正確的□ 中打勾。每題4分，共20分⏎Choose the correct answer. Put a ✓ in the correct box.」
+  text = text.replace(/\s*\n\s*/g, " ");
   for (const re of SECTION_RES) {
     const m = text.match(re);
     if (m) return m[1] ?? "";
   }
+  const m = text.match(ARABIC_SECTION_RE);
+  if (m && hasScore(parseScoreText(m[2]))) return m[1];
   return null;
 }
 
@@ -136,8 +147,22 @@ function toNum(m: RegExpMatchArray | null): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
-export function parseQuestionStart(text: string): { number: number; answerMark: string; rest: string } | null {
-  const m = text.match(QUESTION_RE);
+/** 題號後面直接接數字：「8.3盆仙人掌…」「9.1塊香草蛋糕…」，看起來像小數 */
+const QUESTION_BEFORE_DIGIT_RE = new RegExp(QUESTION_RE.source.replace("(?!\\d)", "(?=\\d)"));
+
+/**
+ * 解析題號。題號後面直接接數字時（「8.3盆…」）可能是小數，
+ * 只有在給了 expectedNext 且題號剛好等於它（接續上一題）時才當成題目。
+ */
+export function parseQuestionStart(
+  text: string,
+  expectedNext?: number,
+): { number: number; answerMark: string; rest: string } | null {
+  let m = text.match(QUESTION_RE);
+  if (!m && expectedNext !== undefined) {
+    m = text.match(QUESTION_BEFORE_DIGIT_RE);
+    if (m && Number(m[2]) !== expectedNext) m = null;
+  }
   if (!m) return null;
   return { number: Number(m[2]), answerMark: m[1] ?? "", rest: text.slice(m[0].length) };
 }
@@ -217,10 +242,14 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
       continue;
     }
 
+    // 下一題的題號：用來分辨「8.3盆仙人掌…」是第 8 題還是小數
+    const expectedNext = (question?.number ?? current?.questions.at(-1)?.number ?? 0) + 1;
+    const q = parseQuestionStart(text, expectedNext);
+
     // 配分寫在大題標題的下一行（第一題之前），例如：
     // 「Part 3 填充題 / Fill in the blanks」
     // 「每格 2 分、共 30 分｜2 points each, 30 points total」
-    if (current && !current.questions.length && !question && !parseQuestionStart(text)) {
+    if (current && !current.questions.length && !question && !q) {
       const score = parseScoreText(text);
       if (hasScore(score)) {
         current.perQuestionScore ??= score.perQuestion;
@@ -232,7 +261,6 @@ export function analyzeStructure(paragraphs: Paragraph[]): ExamStructure {
       }
     }
 
-    const q = parseQuestionStart(text);
     const beforeFirstSection = p.index < firstSection && firstSection !== Infinity;
     if (
       isInstruction(text) ||

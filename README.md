@@ -28,7 +28,7 @@ npm run sample     # 重新產生範例試卷 public/samples/sample-exam.docx
 
 | 項目 | 範例 |
 |---|---|
-| 大題標題 | `一、選擇題（每題 4 分，共 40 分）`、`貳、非選擇題`、`第二部分 計算題`、`Part 2計算題和應用題 / Calculation and word problems (每題5分，共60分)`、`Part II: Word Problems`、`Section B - Multiple Choice` |
+| 大題標題 | `一、選擇題（每題 4 分，共 40 分）`、`貳、非選擇題`、`第二部分 計算題`、`Part 2計算題和應用題 / Calculation and word problems (每題5分，共60分)`、`Part II: Word Problems`、`Section B - Multiple Choice`、`1、 計算題：每題3分，共15分`、`2、 畫畫看、做做看: 每題5分，共15分`（阿拉伯數字編號要緊接冒號或括號與配分說明，才不會和題號混淆） |
 | 大題配分（英文） | `5 points each`、`60 points total`、`Total: 60`、`(60 marks)` |
 | 每格配分 | `每格 2 分、共 30 分｜2 points each, 30 points total`、`每空 2 分`、`2 points per blank`；**不數格子**，大題分數採用「共 Y 分」（所以寫每格時一定要寫共幾分）；全卷總分仍會檢查 |
 | 配分寫在大題標題下一行 | 標題下、第一題之前的配分說明（例如上面那行）也讀得到 |

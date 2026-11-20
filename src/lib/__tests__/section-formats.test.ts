@@ -261,3 +261,87 @@ describe("每格配分：每格 2 分、共 30 分｜2 points each, 30 points to
     expect(msgs.some((m) => m.includes("配分說明中英文不一致") && m.includes(expected))).toBe(true);
   });
 });
+
+describe("阿拉伯數字編號的大題：「1、 計算題：每題3分，共15分」", () => {
+  const CALC = "1、 計算題：每題3分，共15分";
+  const DRAW = "2、 畫畫看、做做看: 每題5分，共15分";
+
+  it.each([
+    [CALC, "short", 3, 15],
+    [DRAW, "other", 5, 15],
+    ["3、填充題（每格2分，共20分）", "fill", undefined, 20],
+  ])("辨識為大題並讀出配分：%s", (title, kind, per, total) => {
+    const s = analyzeStructure(doc([title, "1. 題目"]).paragraphs).sections;
+    expect(s).toHaveLength(1);
+    expect(s[0]).toMatchObject({ title, kind, perQuestionScore: per, totalScore: total });
+    expect(s[0].questions.map((q) => q.number)).toEqual([1]);
+  });
+
+  it("兩個大題各自收題目，總分 15 + 15 = 30", () => {
+    const lines = [CALC, ...range(1, 5).map((n) => `${n}. 計算 ${n} + ${n}`), DRAW, ...range(1, 3).map((n) => `${n}. 畫出圖形 ${n}`)];
+    const s = analyzeStructure(doc(lines).paragraphs).sections;
+    expect(s.map((x) => [x.title, x.questions.length])).toEqual([
+      [CALC, 5],
+      [DRAW, 3],
+    ]);
+    const rule30 = parseRuleSet('[[rules]]\nid = "total-score"\ntype = "score-sum"\nexpect = 30');
+    expect(lint(doc(lines), rule30).issues).toEqual([]);
+  });
+
+  it.each([
+    "1. 小明有 3 顆蘋果，每顆 5 元，共幾元？",
+    "1、 計算：3 + 4 = ?",
+    "2. 下列敘述何者正確：共有幾個？",
+    "1. 小華說：每天跑步 5 分鐘。",
+  ])("一般題目不會被當成大題：%s", (text) => {
+    const s = analyzeStructure(doc(["一、選擇題（共 10 分）", text]).paragraphs).sections;
+    expect(s).toHaveLength(1);
+    expect(s[0].questions).toHaveLength(1);
+  });
+});
+
+describe("大題標題段落裡有手動換行（Shift+Enter）", () => {
+  const TITLE = "一、在正確的□ 中打勾。每題4分，共20分\nChoose the correct answer. Put a ✓ in the correct box.";
+
+  it("中文標題換行接英文說明：仍辨識為大題並讀出配分", () => {
+    const s = analyzeStructure(doc([TITLE, "1. 題目", "2. 題目"]).paragraphs).sections;
+    expect(s).toHaveLength(1);
+    expect(s[0]).toMatchObject({ title: TITLE, perQuestionScore: 4, totalScore: 20 });
+    expect(s[0].questions).toHaveLength(2);
+  });
+
+  it("阿拉伯數字編號的大題也一樣", () => {
+    const title = "1、 計算題：每題3分，共15分\nCalculation: 3 points each, 15 points total";
+    const s = analyzeStructure(doc([title, "1. 計算"]).paragraphs).sections;
+    expect(s[0]).toMatchObject({ title, kind: "short", perQuestionScore: 3, totalScore: 15 });
+  });
+});
+
+describe("題號後面直接接數字：「8.3盆仙人掌…」", () => {
+  const lines = [
+    "四、應用題",
+    "7.有7200顆糖果，每75顆裝1罐，每24罐裝1箱，共可裝幾箱？ （4分）",
+    "8.3盆仙人掌小盆栽賣270元，定禾買9盆付了1000元，可以找回幾元？（5分）",
+    "9.1塊香草蛋糕賣48元，1塊栗子蛋糕賣72元，媽媽各買了18塊，共花幾元？（5分）",
+    "10.長方體所有表面的面積共是幾平方公分？（5分）",
+  ];
+
+  it("剛好是下一題的題號：當成新題目", () => {
+    const s = analyzeStructure(doc(lines).paragraphs).sections[0];
+    expect(s.questions.map((q) => q.number)).toEqual([7, 8, 9, 10]);
+    expect(s.questions[1].body.startsWith("3盆仙人掌")).toBe(true);
+  });
+
+  it("大題第一題也可以：1.5公尺長的繩子…", () => {
+    const s = analyzeStructure(doc(["四、應用題", "1.5公尺長的繩子剪成3段，每段幾公尺？", "2.算算看"]).paragraphs).sections[0];
+    expect(s.questions.map((q) => q.number)).toEqual([1, 2]);
+  });
+
+  it.each([
+    ["題目內文換行後的小數", ["四、應用題", "1. 繩子的長度是多少？", "3.5 公尺減掉 1 公尺"]],
+    ["不連號的小數", ["四、應用題", "1. 繩子的長度是多少？", "2. 計算", "8.5 + 1 = ?"]],
+  ])("不是下一題的題號：仍當成小數（%s）", (_, ls) => {
+    const s = analyzeStructure(doc(ls as string[]).paragraphs).sections[0];
+    expect(s.questions.length).toBe((ls as string[]).length - 2);
+  });
+});
