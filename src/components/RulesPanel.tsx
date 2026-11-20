@@ -21,7 +21,12 @@ export function RulesPanel({ rulesText, onChange, onReset, error, ruleSet, summa
 
   return (
     <section className="card">
-      <h2>2. 規則檔</h2>
+      <h2>
+        2. 規則檔
+        <span className="title-alt">
+          <span lang="en">Rule file</span> · <span lang="vi">Tệp quy tắc</span>
+        </span>
+      </h2>
       <p className="small">
         目前使用：<strong>{ruleSet?.name ?? "（規則檔有錯誤）"}</strong>
         {ruleSet && <span className="muted">（{ruleSet.rules.filter((r) => r.enabled !== false).length} 條規則）</span>}

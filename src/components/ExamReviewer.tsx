@@ -105,15 +105,33 @@ export function ExamReviewer() {
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>試卷審題小幫手</h1>
+          <h1>
+            試卷審題小幫手
+            <span className="title-alt">
+              <span lang="en">Exam Review Assistant</span> · <span lang="vi">Trợ lý kiểm tra đề thi</span>
+            </span>
+          </h1>
           <p className="muted">上傳 PDF 或 Word 試卷，依規則檔自動檢查題號、配分、選項與文字。檔案只在你的瀏覽器中處理，不會上傳到任何伺服器。</p>
+          <p className="muted" lang="en">
+            Upload a PDF or Word exam to automatically check question numbers, scores, answer options, and wording against
+            the rule file. Files are processed only in your browser and are never uploaded to any server.
+          </p>
+          <p className="muted" lang="vi">
+            Tải lên đề thi PDF hoặc Word để tự động kiểm tra số thứ tự câu hỏi, điểm số, các phương án lựa chọn và nội dung
+            theo tệp quy tắc. Tệp chỉ được xử lý trong trình duyệt của bạn và không được tải lên bất kỳ máy chủ nào.
+          </p>
         </div>
       </header>
 
       <div className="layout">
         <aside className="side">
           <section className="card">
-            <h2>1. 上傳試卷</h2>
+            <h2>
+              1. 上傳試卷
+              <span className="title-alt">
+                <span lang="en">Upload exam</span> · <span lang="vi">Tải lên đề thi</span>
+              </span>
+            </h2>
             <div
               className={`dropzone${dragging ? " dragging" : ""}`}
               onClick={() => fileInput.current?.click()}
@@ -131,8 +149,22 @@ export function ExamReviewer() {
               tabIndex={0}
               onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInput.current?.click()}
             >
-              <strong>{loading ? "解析中…" : doc ? doc.fileName : "點這裡選擇或拖放 .docx 或 .pdf 檔"}</strong>
-              <span className="muted small">{doc ? "點擊可更換檔案" : "支援 Word 2007 以後的 .docx 與可選取文字的 PDF"}</span>
+              <strong>{loading ? "解析中…" : doc ? doc.fileName : "點這裡選擇或拖放 .pdf 或 .docx 檔"}</strong>
+              {!doc && !loading && (
+                <>
+                  <span className="drop-alt" lang="en">Click here to choose, or drag and drop a .pdf or .docx file</span>
+                  <span className="drop-alt" lang="vi">Nhấn vào đây để chọn, hoặc kéo thả tệp .pdf hoặc .docx</span>
+                </>
+              )}
+              {doc ? (
+                <span className="muted small">點擊可更換檔案</span>
+              ) : (
+                <span className="drop-hint">
+                  <span className="muted small">支援可選取文字的 PDF 與 Word 2007 以後的 .docx</span>
+                  <span className="muted small" lang="en">Supports text-based PDFs and .docx files from Word 2007 or later</span>
+                  <span className="muted small" lang="vi">Hỗ trợ tệp PDF có văn bản chọn được và tệp .docx từ Word 2007 trở lên</span>
+                </span>
+              )}
             </div>
             <input
               ref={fileInput}
@@ -164,6 +196,8 @@ export function ExamReviewer() {
           {!doc && !loading && (
             <div className="card empty">
               <p>上傳試卷後，檢查結果會顯示在這裡。</p>
+              <p lang="en">Upload an exam and the check results will appear here.</p>
+              <p lang="vi">Sau khi tải lên đề thi, kết quả kiểm tra sẽ hiển thị tại đây.</p>
             </div>
           )}
           {doc && result && (

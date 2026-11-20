@@ -61,6 +61,11 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
 .app { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
 .app-header { margin-bottom: 20px; }
 .app-header p { margin: 0; max-width: 720px; }
+.app-header p + p { margin-top: 6px; }
+/* 標題的英文、越南文翻譯：放在中文下方、字小一點 */
+.title-alt { display: block; font-size: 0.8em; font-weight: 500; margin-top: 2px; }
+.app-header .title-alt { color: var(--header-muted); }
+.card h2 .title-alt { color: var(--muted); font-size: 0.82em; }
 
 .layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
 @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
@@ -89,6 +94,11 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
   gap: 4px;
   word-break: break-all;
 }
+/* 說明文字照單字換行，「.docx」、英文單字不要被 break-all 從中間切開（檔名仍用 break-all） */
+.dropzone span { word-break: normal; overflow-wrap: anywhere; }
+/* 上傳區：主要提示的英文、越南文；說明文字三行一組，和上方提示隔開一點 */
+.dropzone .drop-alt { font-size: 0.9rem; font-weight: 600; }
+.dropzone .drop-hint { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
 .dropzone:hover, .dropzone.dragging { border-color: var(--accent); background: var(--surface-2); }
 
 .link-btn { background: none; border: none; color: var(--accent); padding: 8px 0 0; }
