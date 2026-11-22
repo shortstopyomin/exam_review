@@ -70,7 +70,8 @@ export function GoOutForm() {
   const [reason, setReason] = useState("");
   const [applicant, setApplicant] = useState<string | null>(null);
   const [date, setDate] = useState(todayIso);
-  const signer = applicant ?? name;
+  // 沒改過就用上次記住的申請人，沒記過就跟姓名一樣
+  const signer = applicant ?? (stored.applicant || name);
 
   const info: GoOutInfo = {
     name,
@@ -132,7 +133,7 @@ export function GoOutForm() {
     setBusy("fill");
     setError(null);
     try {
-      saveProfile({ name, dept, position, contact });
+      saveProfile({ name, dept, position, contact, applicant: signer.trim() === name.trim() ? "" : signer });
       const bytes = await fillGoOutForm(template.slice(0), info);
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
@@ -204,7 +205,7 @@ export function GoOutForm() {
               <input value={position} onChange={(e) => setPosition(e.target.value)} autoComplete="organization-title" />
             </label>
           </div>
-          <p className="muted small">姓名、部門、職務、聯繫方式會記在這台電腦的瀏覽器裡（跟請假單共用），下次自動帶入。</p>
+          <p className="muted small">姓名、部門、職務、聯繫方式、申請人會在下載時記在這台電腦的瀏覽器裡（跟請假單共用），下次自動帶入。</p>
         </section>
 
         <section className="card">

@@ -93,7 +93,8 @@ export function LeaveForm() {
   })();
   const period = autoPeriod;
   const total = autoTotal;
-  const signer = applicant ?? name;
+  // 沒改過就用上次記住的申請人，沒記過就跟姓名一樣
+  const signer = applicant ?? (stored.applicant || name);
   const available = template?.types ?? LEAVE_TYPES.map((t) => t.zh);
 
   const info: LeaveInfo = {
@@ -152,7 +153,7 @@ export function LeaveForm() {
     setBusy("fill");
     setError(null);
     try {
-      saveProfile({ name, dept, position });
+      saveProfile({ name, dept, position, applicant: signer.trim() === name.trim() ? "" : signer });
       const bytes = await fillLeaveForm(template.data.slice(0), info);
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
@@ -222,7 +223,7 @@ export function LeaveForm() {
               <input value={position} onChange={(e) => setPosition(e.target.value)} autoComplete="organization-title" />
             </label>
           </div>
-          <p className="muted small">姓名、單位、職務會記在這台電腦的瀏覽器裡，下次自動帶入。</p>
+          <p className="muted small">姓名、單位、職務、申請人會在下載時記在這台電腦的瀏覽器裡，下次自動帶入。</p>
         </section>
 
         <section className="card">

@@ -3,7 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 
 /*
- * 請假單、外出單共用：姓名、單位、職務、聯繫方式記在這台瀏覽器，下次不用重打。
+ * 請假單、外出單共用：姓名、單位、職務、聯繫方式、申請人記在這台瀏覽器，下次不用重打。
  * 只存在 localStorage（不會上傳）；無痕模式或被封鎖時就不記。
  */
 
@@ -14,6 +14,8 @@ export interface Profile {
   dept?: string;
   position?: string;
   contact?: string;
+  /** 申請人簽名欄的名字；跟姓名一樣時不記（空字串），之後改姓名會跟著變 */
+  applicant?: string;
 }
 
 const noSubscribe = () => () => {};
@@ -30,7 +32,7 @@ function parse(raw: string | null): Profile {
   try {
     const p = JSON.parse(raw ?? "{}");
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-    return { name: str(p.name), dept: str(p.dept), position: str(p.position), contact: str(p.contact) };
+    return { name: str(p.name), dept: str(p.dept), position: str(p.position), contact: str(p.contact), applicant: str(p.applicant) };
   } catch {
     return {};
   }
