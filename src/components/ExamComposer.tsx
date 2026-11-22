@@ -236,6 +236,7 @@ export function ExamComposer() {
           <p className="nav-link">
             <Link href="/">← 試卷審題 Exam Review</Link>
             <Link href="/leave/">請假單小幫手 Leave Form</Link>
+            <Link href="/goout/">外出單小幫手 Going Out Form</Link>
           </p>
         </div>
       </header>

@@ -48,11 +48,11 @@ const info: LeaveInfo = {
   position: "教師",
   type: "其他",
   otherText: "防疫假",
-  period: "2026/11/23 08:00 ~ 2026/11/24 17:00",
+  period: "23/11/2026 08:00 ~ 24/11/2026 17:00",
   total: "2 天",
   reason: "感冒就醫\n附診斷證明",
   applicant: "王小明",
-  date: "2026/11/22",
+  date: "22/11/2026",
 };
 
 async function documentXml(bytes: Uint8Array) {
@@ -89,18 +89,18 @@ describe("請假單", () => {
     expect(r[1][0].text.match(/¨/g)).toHaveLength(3);
     // 時間與天數都寫在 total 格，「請假時間與日數」格只留標籤
     expect(r[2][0].paras).toEqual(["請假時間與日數time and days："]);
-    expect(r[2][1].paras).toEqual(["縂total： 2 天", "2026/11/23 08:00 ~ 2026/11/24 17:00"]);
+    expect(r[2][1].paras).toEqual(["縂total： 2 天", "23/11/2026 08:00 ~ 24/11/2026 17:00"]);
     expect(r[3][1].paras).toEqual(["感冒就醫", "附診斷證明"]);
-    expect(r[5][0].paras).toEqual(["王小明", "2026/11/22"]);
+    expect(r[5][0].paras).toEqual(["王小明", "22/11/2026"]);
     expect(r[5][1].text).toBe("");
   });
 
   it("重複填寫不會累積舊值", async () => {
     const once = await fillLeaveForm(await form(), info);
-    const twice = await fillLeaveForm(once, { ...info, type: "事假", total: "1 天", period: "2026/12/01" });
+    const twice = await fillLeaveForm(once, { ...info, type: "事假", total: "1 天", period: "01/12/2026" });
     const r = await rows(twice);
     expect(r[2][0].paras).toEqual(["請假時間與日數time and days："]);
-    expect(r[2][1].paras).toEqual(["縂total： 1 天", "2026/12/01"]);
+    expect(r[2][1].paras).toEqual(["縂total： 1 天", "01/12/2026"]);
     expect(r[1][0].text).toMatch(/^þ/);
     expect(r[1][1].text).toMatch(/^¨/);
     const again = await inspectLeaveForm(twice);
@@ -117,7 +117,7 @@ describe("請假單", () => {
     const sigCell = [...sigRow(xml).matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)][0][0];
     const [nameP, dateP] = [...sigCell.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map((m) => m[0]);
     expect(dateP).toContain('<w:sz w:val="18"/>');
-    expect(nameP).not.toContain("<w:sz ");
+    expect(nameP).toContain('<w:sz w:val="26"/>'); // 名字 13pt
     expect(nameP).toContain('<w:snapToGrid w:val="0"/>');
     // pPr 子元素順序要對（snapToGrid 在 spacing 前、jc 在 rPr 前），Word 才不會說檔案損毀
     expect(nameP).toMatch(/<w:snapToGrid[^>]*\/><w:spacing[^>]*\/>.*<w:jc /);
@@ -154,14 +154,14 @@ describe("請假單", () => {
   });
 
   it("請假時間：同一天只寫一次日期，同一年結束日不寫年份", () => {
-    expect(formatPeriod("2026-11-23", "08:00", "2026-11-23", "12:00")).toBe("2026/11/23 08:00 ~ 12:00");
-    expect(formatPeriod("2026-11-23", "07:30", "2026-11-25", "10:30")).toBe("2026/11/23 07:30 ~ 11/25 10:30");
-    expect(formatPeriod("2026-12-30", "07:30", "2027-01-02", "16:30")).toBe("2026/12/30 07:30 ~ 2027/01/02 16:30");
-    expect(formatPeriod("2026-11-23", "", "", "")).toBe("2026/11/23");
+    expect(formatPeriod("2026-11-23", "08:00", "2026-11-23", "12:00")).toBe("23/11/2026 08:00 ~ 12:00");
+    expect(formatPeriod("2026-11-23", "07:30", "2026-11-25", "10:30")).toBe("23/11/2026 07:30 ~ 25/11 10:30");
+    expect(formatPeriod("2026-12-30", "07:30", "2027-01-02", "16:30")).toBe("30/12/2026 07:30 ~ 02/01/2027 16:30");
+    expect(formatPeriod("2026-11-23", "", "", "")).toBe("23/11/2026");
   });
 
   it("檔名", () => {
-    expect(leaveFileName({ name: "王/小明", date: "2026/11/22" })).toBe("請假單-王小明-20261122.docx");
+    expect(leaveFileName({ name: "王/小明", date: "22/11/2026" })).toBe("請假單-王小明-20261122.docx");
   });
 
   it("內建的 F-QL-013G 請假單（public/leave/）讀得懂、填得進去", async () => {
@@ -171,8 +171,18 @@ describe("請假單", () => {
     expect(t.prefill.name).toBe("");
     const r = await rows(await fillLeaveForm(data, info));
     expect(r[0][1].text).toBe("王小明");
-    expect(r[2][1].paras).toEqual(["縂total： 2 天", "2026/11/23 08:00 ~ 2026/11/24 17:00"]);
-    expect(r[5][0].paras).toEqual(["王小明", "2026/11/22"]);
+    expect(r[2][1].paras).toEqual(["縂total： 2 天", "23/11/2026 08:00 ~ 24/11/2026 17:00"]);
+    expect(r[5][0].paras).toEqual(["王小明", "22/11/2026"]);
+  });
+
+  it("表格後面的空段落縮成 1pt，不會多出空白的第二頁", async () => {
+    const xml = await documentXml(await fillLeaveForm(readFileSync("public/leave/F-QL-013G-leave-form.docx"), info));
+    const tail = xml.slice(xml.lastIndexOf("</w:tbl>"));
+    const p = /<w:p[ >][\s\S]*?<\/w:p>/.exec(tail)![0];
+    expect(p).toMatch(/<w:snapToGrid w:val="0"\/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"\/>/);
+    expect(p).toMatch(/<w:rPr>[\s\S]*<w:sz w:val="2"\/><w:szCs w:val="2"\/>[\s\S]*<\/w:rPr>/);
+    // pPr 子元素順序：tabs → snapToGrid → spacing → rPr
+    expect(p).toMatch(/<w:tabs>[\s\S]*<\/w:tabs><w:snapToGrid[^>]*\/><w:spacing[^>]*\/><w:rPr>/);
   });
 
   // 其他請假單版型（例如改版前後的 Word 檔）：本機測試時用 LEAVE_DOCX=/path/to/請假單.docx npm test
@@ -183,7 +193,7 @@ describe("請假單", () => {
     const out = await fillLeaveForm(data, info);
     const r = await rows(out);
     expect(r[0][1].text).toBe("王小明");
-    expect(r[5][0].paras).toEqual(["王小明", "2026/11/22"]);
+    expect(r[5][0].paras).toEqual(["王小明", "22/11/2026"]);
     // 簽名列：1376 - 240（時間）- 290（事由兩行）
     const heights = (x: string) => [...x.matchAll(/<w:trHeight w:val="(\d+)"/g)].map((m) => Number(m[1]));
     const before = heights(await documentXml(data));
@@ -196,7 +206,7 @@ describe("請假單", () => {
     // 重填不會再調
     expect(heights(await documentXml(await fillLeaveForm(out, info)))).toEqual(after);
     // 總計格兩行，都是原本的字級（放得下，不縮小）
-    expect(r[2][1].paras).toEqual(["縂total： 2 天", "2026/11/23 08:00 ~ 2026/11/24 17:00"]);
+    expect(r[2][1].paras).toEqual(["縂total： 2 天", "23/11/2026 08:00 ~ 24/11/2026 17:00"]);
     expect(await documentXml(out)).not.toMatch(/<w:sz w:val="\d+"\/><w:szCs w:val="\d+"\/>(?:(?!<\/w:r>)[\s\S])*2026\/11\/23/);
     if (process.env.LEAVE_OUT) (await import("node:fs")).writeFileSync(process.env.LEAVE_OUT, out);
   });

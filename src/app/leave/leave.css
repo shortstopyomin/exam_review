@@ -5,7 +5,6 @@
 .leave .info-fields input { width: 100%; }
 .leave .info-fields label > span:first-child { display: flex; flex-direction: column; line-height: 1.2; }
 .leave .info-fields label > span:first-child .muted { font-size: 0.75rem; }
-.leave .leave-found { margin: 10px 0 0; }
 
 .leave .signature-preview { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 12px; padding: 14px 8px; border: 1px dashed var(--border); border-radius: 8px; font-family: "Times New Roman", "KaiTi", "BiauKai", "DFKai-SB", serif; font-size: 1.05rem; background: var(--surface-2); }
 .leave .signature-preview span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -39,9 +38,13 @@
   .leave input, .leave textarea { font-size: 16px; }
   .leave .leave-types { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .leave .leave-details { margin-bottom: 140px; }
+  /* 更換版型是選填的，手機上縮小，不要佔掉一整個畫面 */
+  .leave .dropzone { padding: 12px; }
+  .leave .dropzone .muted { display: none; }
 }
 .leave .total-problem { color: var(--error); font-size: 0.8rem; }
+.leave input[readonly] { background: var(--surface-2); color: var(--text); cursor: default; }
+
 .leave .leave-builtin { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 10px; }
-.leave .leave-builtin strong { font-size: 0.95rem; }
+.leave .leave-builtin strong { font-size: 0.95rem; overflow-wrap: anywhere; }
 .leave .leave-builtin button { margin-left: auto; font-size: 0.8rem; }
-.leave .leave-builtin + .dropzone { padding-top: 10px; padding-bottom: 10px; }

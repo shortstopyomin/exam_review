@@ -1,5 +1,25 @@
-import JSZip from "jszip";
-import { child, descendants, kids, paragraphText, parseXml, remove, serialize, setW, W, wAttr, wEl, type Document, type Element } from "../compose/xml";
+import { child, descendants, kids, paragraphText, remove, serialize, W, wAttr, wEl, type Document, type Element } from "../compose/xml";
+import {
+  FormError,
+  cellText,
+  paragraphs,
+  nextCell,
+  gridStart,
+  loadDocument,
+  makeRun,
+  setCellLines,
+  setAfterLabel,
+  textEms,
+  fitRun,
+  compact,
+  growRow,
+  shrinkRow,
+  collapseTrailingParagraph,
+  scrubAuthors,
+  slashDate,
+} from "../forms/docx";
+
+export { slashDate, textEms } from "../forms/docx";
 
 /*
  * 請假單（F-QL-013G APPLICATION FOR LEAVE 請假單 ĐƠN XIN PHÉP）填寫。
@@ -7,7 +27,7 @@ import { child, descendants, kids, paragraphText, parseXml, remove, serialize, s
  * 版面、字型、頁首頁尾、流程說明全部保持原樣。
  */
 
-export class LeaveFormError extends Error {}
+export class LeaveFormError extends FormError {}
 
 /** Wingdings 的打勾框（þ = U+00FE；Word 有時存成私用區 U+F0FE） */
 const BOX_CHECKED = "þ";
@@ -47,7 +67,7 @@ export interface LeaveInfo {
   reason: string;
   /** 申請人簽名欄的名字 */
   applicant: string;
-  /** 申請日期 yyyy/mm/dd，押在申請人名字下方 */
+  /** 申請日期 dd/mm/yyyy，押在申請人名字下方 */
   date: string;
 }
 
@@ -74,26 +94,6 @@ interface Cells {
 }
 
 const isSymbolFont = (r: Element) => /wingdings|symbol/i.test(wAttr(child(child(r, "rPr"), "rFonts"), "ascii") ?? "");
-const cellText = (tc: Element) => kids(tc).filter((k) => k.localName === "p").map((p) => paragraphText(p, false)).join("\n");
-const paragraphs = (tc: Element) => kids(tc).filter((k) => k.namespaceURI === W && k.localName === "p");
-const nextCell = (tc: Element) => kids(tc.parentNode as Element).filter((k) => k.localName === "tc")[indexOfCell(tc) + 1];
-
-function indexOfCell(tc: Element) {
-  return kids(tc.parentNode as Element)
-    .filter((k) => k.localName === "tc")
-    .indexOf(tc);
-}
-
-/** 格子的起始欄位（考慮 gridSpan），用來對齊上下兩列 */
-function gridStart(tc: Element) {
-  let col = 0;
-  for (const c of kids(tc.parentNode as Element).filter((k) => k.localName === "tc")) {
-    if (c === tc) return col;
-    col += Number(wAttr(child(child(c, "tcPr"), "gridSpan"), "val") ?? 1);
-  }
-  return -1;
-}
-
 function findCells(doc: Document): Cells {
   const body = child(doc.documentElement, "body");
   if (!body) throw new LeaveFormError("這不是 Word 文件（找不到內文）");
@@ -160,7 +160,7 @@ function findCells(doc: Document): Cells {
 const afterColon = (tc: Element) => cellText(tc).split(/[:：]/).slice(1).join("：").trim();
 
 export async function inspectLeaveForm(data: ArrayBuffer | Uint8Array): Promise<LeaveTemplateInfo> {
-  const doc = await loadDocument(data);
+  const doc = await loadDocument(data, LeaveFormError);
   const c = findCells(doc.doc);
   const types = [...new Set(c.boxes.map((b) => b.type))];
   if (!types.length) throw new LeaveFormError("請假單裡找不到假別的勾選框（□ 事假、□ 病假…）");
@@ -178,88 +178,6 @@ export async function inspectLeaveForm(data: ArrayBuffer | Uint8Array): Promise<
       type: c.boxes.find((b) => b.checked)?.type,
     },
   };
-}
-
-async function loadDocument(data: ArrayBuffer | Uint8Array) {
-  let zip: JSZip;
-  try {
-    zip = await JSZip.loadAsync(data);
-  } catch {
-    throw new LeaveFormError("無法開啟這個檔案，請確認是 Word .docx 檔");
-  }
-  const file = zip.file("word/document.xml");
-  if (!file) throw new LeaveFormError("這不是 Word .docx 檔（找不到 word/document.xml）");
-  return { zip, doc: parseXml(await file.async("string")) };
-}
-
-/** 新 run：格式沿用段落標記的格式（版型空白格子裡只有段落標記會帶字型） */
-function makeRun(doc: Document, p: Element, text: string, like?: Element): Element {
-  const r = wEl(doc, "r");
-  const rPr = child(like, "rPr") ?? child(child(p, "pPr"), "rPr");
-  if (rPr) r.appendChild(rPr.cloneNode(true));
-  const t = wEl(doc, "t");
-  t.setAttribute("xml:space", "preserve");
-  t.appendChild(doc.createTextNode(text));
-  r.appendChild(t);
-  return r;
-}
-
-/** 把格子的內容換成一行或多行文字，第一段的段落格式沿用到其他行 */
-function setCellLines(doc: Document, tc: Element, lines: string[]) {
-  const ps = paragraphs(tc);
-  const first = ps[0] ?? tc.appendChild(wEl(doc, "p"));
-  const like = kids(first).find((k) => k.localName === "r" && child(k, "t"));
-  ps.slice(1).forEach(remove);
-  for (const k of kids(first)) if (k.localName !== "pPr") remove(k);
-  lines.forEach((line, i) => {
-    const p = i === 0 ? first : (tc.appendChild(first.cloneNode(false)) as Element);
-    if (i > 0) {
-      const pPr = child(first, "pPr");
-      if (pPr) p.appendChild(pPr.cloneNode(true));
-    }
-    if (line) p.appendChild(makeRun(doc, first, line, like));
-  });
-}
-
-/** 標籤格：保留「…：」，把冒號後面的舊值換成新值 */
-function setAfterLabel(doc: Document, tc: Element, value: string): Element | undefined {
-  const ps = paragraphs(tc);
-  const p = ps.find((x) => /[:：]/.test(paragraphText(x, false))) ?? ps[ps.length - 1];
-  const runs = kids(p).filter((k) => k.localName === "r");
-  // 標籤到第一個冒號為止，之後的 run 都是舊值（舊值本身可能有「17:00」這種冒號）
-  const k = runs.findIndex((r) => /[:：]/.test(child(r, "t")?.textContent ?? ""));
-  if (k >= 0) {
-    const t = child(runs[k], "t")!;
-    const s = t.textContent ?? "";
-    t.textContent = s.slice(0, s.search(/[:：]/) + 1);
-    runs.slice(k + 1).forEach(remove);
-  }
-  if (value) return p.appendChild(makeRun(doc, p, ` ${value}`, runs.find((r) => child(r, "t")))) as Element;
-}
-
-/**
- * 估計文字寬度（em）：中文、全形 1；Times New Roman 的數字 0.5、「/ : . ,」約 0.28、空白 0.25、
- * 其他英文字母抓 0.55（大寫較寬，估多一點比較保險）
- */
-export function textEms(text: string): number {
-  let ems = 0;
-  for (const ch of text) {
-    if (/[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000-\u303F]/.test(ch)) ems += 1;
-    else if (ch === " ") ems += 0.25;
-    else if (/[/:.,;'|]/.test(ch)) ems += 0.28;
-    else if (/[0-9]/.test(ch)) ems += 0.5;
-    else ems += 0.55;
-  }
-  return ems;
-}
-
-/** 字太長放不下一行時縮小字級（最小 7pt） */
-function fitRun(doc: Document, run: Element, text: string, avail: number, base = 12) {
-  const size = Math.max(7, Math.min(base, Math.floor((avail / textEms(text)) * 2) / 2));
-  if (size >= base) return;
-  const rPr = ensure(doc, run, "rPr", ["rPr", "t"]);
-  setProp(doc, rPr, "sz", { val: String(Math.round(size * 2)) }, RPR_ORDER);
-  setProp(doc, rPr, "szCs", { val: String(Math.round(size * 2)) }, RPR_ORDER);
 }
 
 /**
@@ -283,44 +201,6 @@ function setTotal(doc: Document, tc: Element, total: string, period: string) {
   if (width) fitRun(doc, r, period, width - 12);
 }
 
-// Word 規定的子元素順序；插入新元素時要放在正確的位置，否則 Word 會說檔案損毀
-const PPR_ORDER = ["pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange"];
-const RPR_ORDER = ["rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect", "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish", "oMath"];
-
-/** 設定（或取代）一個屬性元素，依 Word 的順序放好 */
-function setProp(doc: Document, parent: Element, name: string, attrs: Record<string, string>, order: string[]) {
-  const old = child(parent, name);
-  if (old) remove(old);
-  const el = wEl(doc, name, attrs);
-  const rank = order.indexOf(name);
-  const after = kids(parent).find((k) => order.indexOf(k.localName ?? "") > rank);
-  parent.insertBefore(el, after ?? null);
-}
-
-function ensure(doc: Document, parent: Element, name: string, order: string[]): Element {
-  const found = child(parent, name);
-  if (found) return found;
-  setProp(doc, parent, name, {}, order);
-  return child(parent, name)!;
-}
-
-/**
- * 段落改成緊湊行距：版型的文件格線（每行 18pt）會把每一行撐到格線高度，
- * 這張 A5 請假單的表格幾乎剛好佔滿一頁，多一點高度就會掉到第二頁。
- * halfPoints 有給時順便改字級（Word 以半點為單位，18 = 9pt）。
- */
-function compact(doc: Document, p: Element, halfPoints?: number) {
-  const pPr = child(p, "pPr") ?? (p.insertBefore(wEl(doc, "pPr"), p.firstChild) as Element);
-  setProp(doc, pPr, "snapToGrid", { val: "0" }, PPR_ORDER);
-  setProp(doc, pPr, "spacing", { before: "0", after: "0", line: "240", lineRule: "auto" }, PPR_ORDER);
-  if (!halfPoints) return;
-  for (const r of kids(p).filter((k) => k.localName === "r")) {
-    const rPr = ensure(doc, r, "rPr", ["rPr", "t"]);
-    setProp(doc, rPr, "sz", { val: String(halfPoints) }, RPR_ORDER);
-    setProp(doc, rPr, "szCs", { val: String(halfPoints) }, RPR_ORDER);
-  }
-}
-
 /**
  * 請假時間：標籤「…time and days：」已經幾乎佔滿整格，時間放在下一段（10pt、緊湊行距），
  * 這樣這一列只會多一小行。重填時先拿掉上次加的那一段。
@@ -339,29 +219,8 @@ function setPeriod(doc: Document, tc: Element, value: string) {
   compact(doc, p, 20);
 }
 
-/** 把一列的最小高度加到 target（twips），回傳加了多少 */
-function growRow(tc: Element, target: number): number {
-  const h = child(child(tc.parentNode as Element, "trPr"), "trHeight");
-  const cur = Number(wAttr(h, "val") ?? 0);
-  if (!h || !cur || cur >= target) return 0;
-  setW(h, "val", String(target));
-  return target - cur;
-}
-
-/** 簽名列的最小高度（twips）：其他列長高多少，就從這裡扣回來，讓整張表維持一頁 */
-function shrinkRow(doc: Document, tc: Element, twips: number) {
-  if (twips <= 0) return;
-  const tr = tc.parentNode as Element;
-  const trPr = child(tr, "trPr");
-  const h = child(trPr, "trHeight");
-  const cur = Number(wAttr(h, "val") ?? 0);
-  if (!h || !cur) return;
-  // 至少留 40pt（約 1.4 公分）給主管們簽名
-  setW(h, "val", String(Math.max(800, cur - twips)));
-}
-
 export async function fillLeaveForm(data: ArrayBuffer | Uint8Array, info: LeaveInfo): Promise<Uint8Array> {
-  const { zip, doc } = await loadDocument(data);
+  const { zip, doc } = await loadDocument(data, LeaveFormError);
   const c = findCells(doc);
   // 簽名格原本是空的 = 第一次填這張版型；重填時高度已經調過，不要再扣
   const firstFill = !cellText(c.signature).trim();
@@ -390,9 +249,9 @@ export async function fillLeaveForm(data: ArrayBuffer | Uint8Array, info: LeaveI
     }
   }
 
-  // 簽名格：名字，下一行押日期（9pt）；緊湊行距、垂直置中、水平置中
+  // 簽名格：名字（13pt，比版型的 12pt 大一點），下一行押日期（9pt）；緊湊行距、垂直置中、水平置中
   setCellLines(doc, c.signature, [info.applicant.trim(), info.date.trim()]);
-  paragraphs(c.signature).forEach((p, i) => compact(doc, p, i === 1 ? 18 : undefined));
+  paragraphs(c.signature).forEach((p, i) => compact(doc, p, i === 1 ? 18 : 26));
   if (firstFill) {
     // 時間那一列加高到 36pt（720 twips）放兩行；事由每多一行約 14.4pt（290 twips）。都從簽名列扣回來
     const grown = period ? growRow(c.totalLabel, 720) : 0;
@@ -413,13 +272,10 @@ export async function fillLeaveForm(data: ArrayBuffer | Uint8Array, info: LeaveI
     tcPr.insertBefore(wEl(doc, "vAlign", { val: "center" }), after ?? null);
   }
 
+  collapseTrailingParagraph(doc);
   zip.file("word/document.xml", serialize(doc));
+  await scrubAuthors(zip);
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-}
-
-/** 2026-11-23 → 2026/11/23 */
-export function slashDate(iso: string) {
-  return iso.replace(/-/g, "/");
 }
 
 /**
@@ -437,7 +293,10 @@ export function formatPeriod(sd: string, st: string, ed: string, et: string) {
 
 export function leaveFileName(info: Pick<LeaveInfo, "name" | "date">) {
   const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "").trim();
-  return ["請假單", safe(info.name), info.date.replace(/\D/g, "")].filter(Boolean).join("-") + ".docx";
+  // 表單上的日期是 dd/mm/yyyy；檔名用 yyyymmdd，檔案依日期排序才會對
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(info.date.trim());
+  const ymd = dmy ? dmy[3] + dmy[2].padStart(2, "0") + dmy[1].padStart(2, "0") : info.date.replace(/\D/g, "");
+  return ["請假單", safe(info.name), ymd].filter(Boolean).join("-") + ".docx";
 }
 
 /** 上班時間 07:30–16:30，一天 = 9 小時 */
