@@ -171,7 +171,7 @@ export function GoOutForm() {
             Điền thông tin và tải về đơn xin ra ngoài đã điền dưới dạng tệp Word. Dữ liệu không rời khỏi trình duyệt của bạn.
           </p>
           <p className="nav-link">
-            <Link href="/">← 試卷審題 Exam Review</Link>
+            <Link href="/">← 越聰越懶的小島</Link>
             <Link href="/leave/">請假單小幫手 Leave Form</Link>
           </p>
         </div>

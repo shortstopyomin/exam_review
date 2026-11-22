@@ -129,27 +129,13 @@ export function ExamReviewer() {
             Tải lên đề thi PDF hoặc Word để tự động kiểm tra số thứ tự câu hỏi, điểm số, các phương án lựa chọn và nội dung
             theo tệp quy tắc. Tệp chỉ được xử lý trong trình duyệt của bạn và không được tải lên bất kỳ máy chủ nào.
           </p>
-          {/* 其他功能：組卷（/compose/）、請假單（/leave/）、外出單（/goout/），審題本身不依賴它們 */}
-          <Link href="/compose/" className="feature-link">
-            <span>組卷小幫手</span>
+          {/* 回主選單；其他功能（組卷、請假單、外出單）都從小島進入 */}
+          <Link href="/" className="feature-link">
+            <span aria-hidden="true">←</span>
+            <span>越聰越懶的小島</span>
             <span className="feature-link-alt">
-              <span lang="en">Exam Composer</span> · <span lang="vi">Ghép đề thi</span>
+              <span lang="en">All tools</span> · <span lang="vi">Tất cả công cụ</span>
             </span>
-            <span aria-hidden="true">→</span>
-          </Link>
-          <Link href="/leave/" className="feature-link">
-            <span>請假單小幫手</span>
-            <span className="feature-link-alt">
-              <span lang="en">Leave Form</span> · <span lang="vi">Đơn xin phép</span>
-            </span>
-            <span aria-hidden="true">→</span>
-          </Link>
-          <Link href="/goout/" className="feature-link">
-            <span>外出單小幫手</span>
-            <span className="feature-link-alt">
-              <span lang="en">Going Out Form</span> · <span lang="vi">Đơn xin ra ngoài</span>
-            </span>
-            <span aria-hidden="true">→</span>
           </Link>
         </div>
       </header>
