@@ -13,7 +13,8 @@ export const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 export type { Document, Element, Node };
 
 export function parseXml(xml: string): Document {
-  return new DOMParser().parseFromString(xml, "text/xml");
+  // 有些工具存檔時會在 XML 前面加 UTF-8 BOM（Word 可以開），xmldom 會因此報錯
+  return new DOMParser().parseFromString(xml.replace(/^﻿/, ""), "text/xml");
 }
 
 export function serialize(doc: Document): string {
