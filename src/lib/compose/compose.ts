@@ -79,8 +79,23 @@ function leadingNumberLength(text: string): number {
 }
 
 /** 刪掉段落開頭手打的題號，以及題號後面的 tab */
+/**
+ * 題目開頭要拿掉的部分：手打的題號，加上作答括號（空的或填了答案的），例如
+ * 「( )1.」「1.（　）」「（ B ）」。題號用 Word 自動編號、括號手打在後面時，只剩括號。
+ * 版型的編號會重新產生「(　　)1.」，新考卷也不該留答案。
+ */
+const ANSWER_BRACKET_RE = /^[\s\u3000]*[（(][\s\u3000]*[A-Za-zＡ-Ｅａ-ｅ○ＯＸX╳✕✗]?[\s\u3000]*[)）][\s\u3000]*/;
+const EMPTY_BRACKET_RE = /^[\s\u3000]*[（(][\s\u3000]*[)）][\s\u3000]*/;
+export function questionPrefixLength(text: string): number {
+  const n = leadingNumberLength(text);
+  // 前面沒有題號時只拿掉空括號：「(A) 21 (B) 27」是選項，不是填了答案的括號
+  const m = (n ? ANSWER_BRACKET_RE : EMPTY_BRACKET_RE).exec(text.slice(n));
+  // 括號後面要接題目文字，避免把「(A)」選項開頭的段落整個吃掉
+  return m && text.length > n + m[0].length ? n + m[0].length : n;
+}
+
 function stripTypedNumber(p: Element) {
-  const n = leadingNumberLength(paragraphText(p));
+  const n = questionPrefixLength(paragraphText(p));
   if (!n) return;
   removeLeadingChars(p, n);
   for (const r of kids(p)) {
@@ -338,7 +353,7 @@ export async function loadDocxSource(data: ArrayBuffer | Uint8Array, name: strin
       const range = blocks.slice(first, last + 1).filter((b) => !is(b, W, "sectPr"));
       const paras = parsed.paragraphs.slice(q.startParagraph, q.endParagraph + 1);
       const lines = range.flatMap((b) => (is(b, W, "p") ? [b] : descendants(b, W, "p"))).map(previewParagraph);
-      if (!paras[0]?.numberingLabel && lines.length) lines[0] = lines[0].slice(leadingNumberLength(lines[0]));
+      if (lines.length) lines[0] = lines[0].slice(questionPrefixLength(lines[0]));
       const text = lines.join("\n").replace(/^\s+|\s+$/g, "").replace(/\n{3,}/g, "\n\n");
       questions.push({
         id: `${sourceIndex}:${questions.length}`,
@@ -398,7 +413,7 @@ export function loadPdfSource(parsed: ParsedDocument, sourceIndex: number): Sour
         if (p.wrapped && lines.length) lines[lines.length - 1] += t;
         else lines.push(t);
       }
-      if (lines.length) lines[0] = lines[0].slice(leadingNumberLength(lines[0]));
+      if (lines.length) lines[0] = lines[0].slice(questionPrefixLength(lines[0]));
       const text = q.body.trim();
       questions.push({
         id: `${sourceIndex}:${questions.length}`,
@@ -481,6 +496,10 @@ interface SectionNumbering {
   ilvl: string;
   /** 版型沒用自動編號時，手打題號的樣式，例如 "(　　)#." */
   manualPrefix?: string;
+  /** 版型每題後面的空白行數（選擇題通常 1 行，計算題是作答空間） */
+  blankAfter: number;
+  /** 版型的空白段落（沿用字級、行距），補空白行時複製它 */
+  blankPara?: Element;
 }
 
 class Composer {
@@ -658,7 +677,7 @@ class Composer {
     if (first) {
       const num = child(child(first, "pPr"), "numPr");
       if (num) remove(num);
-      else stripTypedNumber(first);
+      stripTypedNumber(first);
     }
 
     for (const el of out) {
@@ -674,6 +693,10 @@ class Composer {
     for (const el of out) for (const p of [...(is(el, W, "p") ? [el] : []), ...descendants(el, W, "p")]) {
       replaceInParagraph(p, QUESTION_SCORE, (m) => `${m[1]}${SCORE_BLANK}${m[2]}`);
     }
+    // 空白行比版型少時補足（原卷題目之間沒空行、計算題沒留作答空間）
+    let blanks = 0;
+    for (let i = out.length - 1; i >= 0 && isBlankParagraph(out[i]); i--) blanks++;
+    out.push(...this.blankLines(numbering, numbering.blankAfter - blanks));
     return out;
   }
 
@@ -736,8 +759,14 @@ class Composer {
       }
       out.push(p);
     });
-    out.push(wEl(this.doc, "p"));
+    out.push(...this.blankLines(numbering, numbering.blankAfter));
     return out;
+  }
+
+  private blankLines(numbering: SectionNumbering, n: number): Element[] {
+    return Array.from({ length: Math.max(0, n) }, () =>
+      numbering.blankPara ? (numbering.blankPara.cloneNode(true) as Element) : wEl(this.doc, "p"),
+    );
   }
 
   /** 移除會在新文件裡失效或衝突的東西 */
@@ -839,9 +868,21 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
     output.push(...header);
 
     // 3. 這個大題的編號方式：沿用版型第一題
-    const numbering: SectionNumbering = { ilvl: "0" };
+    const numbering: SectionNumbering = { ilvl: "0", blankAfter: 1 };
     const tq = sec.questions[0];
     if (tq) {
+      // 版型第一題後面有幾行空白，新題目就至少留幾行
+      const stop = sec.questions[1]
+        ? blockOf[sec.questions[1].startParagraph]
+        : nextSection
+          ? blockOf[nextSection.paragraphIndex]
+          : blocks.length;
+      let blankAfter = 0;
+      for (let i = blockOf[tq.endParagraph] + 1; i < stop && isBlankParagraph(blocks[i]); i++) {
+        if (!blankAfter) numbering.blankPara = blocks[i].cloneNode(true) as Element;
+        blankAfter++;
+      }
+      numbering.blankAfter = blankAfter;
       const qp = blocks[blockOf[tq.startParagraph]];
       const pPr = is(qp, W, "p") ? child(qp, "pPr") : undefined;
       if (pPr) {

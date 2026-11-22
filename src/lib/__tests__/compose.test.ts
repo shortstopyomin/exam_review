@@ -10,6 +10,7 @@ import {
   loadDocxSource,
   markDuplicates,
   outputFileName,
+  questionPrefixLength,
 } from "../compose/compose";
 import { formatEqField, parseXml, previewParagraph, replaceInParagraph, W, paragraphText } from "../compose/xml";
 import { parseDocx } from "../docx/parse";
@@ -51,6 +52,9 @@ const template = () =>
     p(""),
     p("Part 2計算題和應用題 / Calculation and word problems (每題5分，共60分)"),
     q("版型計算題一", "c"),
+    // 計算題留 3 行作答空間
+    p(""),
+    p(""),
     p(""),
   ]);
 
@@ -128,6 +132,20 @@ describe("compose", () => {
       "2. |-7| = (  )。",
       "3. 計算 (-3)² + 4 × (-2) 的值。（____ 分）",
     ]);
+    // 每題後面的空白行數至少和版型一樣：選擇題 1 行、計算題 3 行
+    const all = (await parseDocx(out)).paragraphs.map((x) => x.text.trim());
+    const blanksAfter = (start: string) => {
+      let i = all.findIndex((x) => x.startsWith(start));
+      let n = 0;
+      while (++i < all.length && !all[i]) n++;
+      return n;
+    };
+    expect(blanksAfter("(A) 21")).toBe(1);
+    expect(blanksAfter("1. 15 與 20")).toBe(3);
+    expect(blanksAfter("2. |-7|")).toBe(3);
+    // 原題已有 2 行空白，補到 3 行
+    expect(blanksAfter("3. 計算")).toBe(3);
+
     // 版型自己的題目不保留
     expect(t.join("\n")).not.toContain("版型");
     // 每個大題用自己的編號清單（從 1 重新開始），不沿用來源試卷的
@@ -181,6 +199,17 @@ describe("compose helpers", () => {
     ).toBe("2027_2028_S2_Final_G10_Math數學考卷v2.docx");
     expect(outputFileName("2026_S1_Final_G8.docx", { examType: "midterm" })).toBe("2026_S1_Midterm_G8.docx");
     expect(outputFileName("數學考卷.docx", { examType: "final" })).toBe("數學考卷-組卷.docx");
+  });
+
+  it("strips typed numbers and answer brackets", () => {
+    const cut = (t: string) => t.slice(questionPrefixLength(t));
+    expect(cut("( B )1. 下列哪一個數是質數？")).toBe("下列哪一個數是質數？");
+    expect(cut("（　）將一塊邊長為a的正方形")).toBe("將一塊邊長為a的正方形");
+    expect(cut("1.（ C ）若 x = 2")).toBe("若 x = 2");
+    expect(cut("12．計算 3 + 4")).toBe("計算 3 + 4");
+    // 選項開頭、只有括號的段落不動
+    expect(cut("(A) 21 (B) 27")).toBe("(A) 21 (B) 27");
+    expect(cut("（　）")).toBe("（　）");
   });
 
   it("detects title fields", () => {
