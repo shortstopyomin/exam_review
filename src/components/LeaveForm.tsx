@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alt, DropZone } from "@/components/DropZone";
+import { saveProfile, todayIso, useStoredProfile } from "@/components/formProfile";
 import {
   estimateDuration,
   fillLeaveForm,
@@ -20,93 +21,45 @@ import {
 } from "@/lib/leave/leave";
 
 interface Template {
-  name: string;
   data: ArrayBuffer;
   types: LeaveType[];
-  /** 程式內建的版型（public/leave/），不是使用者上傳的 */
-  builtin?: boolean;
 }
 
-/** 內建的請假單版型（F-QL-013G），打開頁面就自動載入，不用上傳 */
+/** 請假單版型（F-QL-013G）內建在程式裡（public/leave/），打開頁面就在背景載入；改版時可以在第 3 區上傳新的 */
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const BUILTIN_URL = `${BASE}/leave/F-QL-013G-leave-form.docx`;
 const BUILTIN_NAME = "F-QL-013G 請假單";
+const TEMPLATE_URL = `${BASE}/leave/F-QL-013G-leave-form.docx`;
 
-async function loadBuiltin(): Promise<Template> {
-  const res = await fetch(BUILTIN_URL);
+async function loadTemplate(): Promise<Template> {
+  const res = await fetch(TEMPLATE_URL);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.arrayBuffer();
   const t = await inspectLeaveForm(data.slice(0));
-  return { name: BUILTIN_NAME, data, types: t.types, builtin: true };
-}
-
-/** 姓名、單位、職務記在這台瀏覽器，下次不用重打 */
-const PROFILE_KEY = "leave-form-profile";
-
-interface Profile {
-  name?: string;
-  dept?: string;
-  position?: string;
-}
-
-const noSubscribe = () => () => {};
-function readProfileRaw(): string | null {
-  try {
-    return localStorage.getItem(PROFILE_KEY);
-  } catch {
-    return null; // 無痕模式或被封鎖時就不記
-  }
-}
-function parseProfile(raw: string | null): Profile {
-  try {
-    const p = JSON.parse(raw ?? "{}");
-    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-    return { name: str(p.name), dept: str(p.dept), position: str(p.position) };
-  } catch {
-    return {};
-  }
-}
-
-function todayIso() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return { data, types: t.types };
 }
 
 export function LeaveForm() {
   const [template, setTemplate] = useState<Template | null>(null);
-  const [builtinState, setBuiltinState] = useState<"loading" | "ready" | "failed">("loading");
+  const [templateFailed, setTemplateFailed] = useState(false);
   const [busy, setBusy] = useState<"template" | "fill" | null>(null);
+  /** 使用者上傳的版型檔名；null 表示用內建版型 */
+  const [uploaded, setUploaded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadBuiltin().then(
-      (t) => {
-        if (cancelled) return;
-        setBuiltinState("ready");
-        // 使用者已經自己上傳了就不要蓋掉
-        setTemplate((cur) => cur ?? t);
-      },
-      () => !cancelled && setBuiltinState("failed"),
+    loadTemplate().then(
+      // 使用者已經自己上傳了就不要蓋掉
+      (t) => !cancelled && setTemplate((cur) => cur ?? t),
+      () => !cancelled && setTemplateFailed(true),
     );
     return () => {
       cancelled = true;
     };
   }, []);
 
-  async function restoreBuiltin() {
-    setError(null);
-    try {
-      setTemplate(await loadBuiltin());
-    } catch (e) {
-      setError(`內建請假單載入失敗：${(e as Error).message}`);
-    }
-  }
-
   // 沒改過的欄位顯示上次記住的值
-  const storedRaw = useSyncExternalStore(noSubscribe, readProfileRaw, () => null);
-  const stored = useMemo(() => parseProfile(storedRaw), [storedRaw]);
+  const stored = useStoredProfile();
   const [nameEdit, setName] = useState<string | null>(null);
   const [deptEdit, setDept] = useState<string | null>(null);
   const [positionEdit, setPosition] = useState<string | null>(null);
@@ -120,9 +73,7 @@ export function LeaveForm() {
   const [startTime, setStartTime] = useState(WORK_START);
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState(WORK_END);
-  // 請假時間與總計會依起訖自動產生；手動改過就不再覆蓋
-  const [periodText, setPeriodText] = useState<string | null>(null);
-  const [totalText, setTotalText] = useState<string | null>(null);
+  // 請假時間與總計一律依開始、結束時間自動產生，不能手動改
 
   const [reason, setReason] = useState("");
   const [applicant, setApplicant] = useState<string | null>(null);
@@ -140,8 +91,8 @@ export function LeaveForm() {
       return "結束時間要晚於開始時間";
     return `選的時間不在上班時間 ${WORK_START}–${WORK_END} 內，不算請假時數`;
   })();
-  const period = periodText ?? autoPeriod;
-  const total = totalText ?? autoTotal;
+  const period = autoPeriod;
+  const total = autoTotal;
   const signer = applicant ?? name;
   const available = template?.types ?? LEAVE_TYPES.map((t) => t.zh);
 
@@ -159,13 +110,14 @@ export function LeaveForm() {
   };
 
   const missing = useMemo(() => {
-    if (!template) return builtinState === "loading" ? "載入請假單中…" : "請先上傳請假單";
+    if (!template) return templateFailed ? "請假單載入失敗，請重新整理頁面" : "載入請假單中…";
     if (!name.trim()) return "請填姓名";
     if (!type) return "請選擇假別";
-    if (!period.trim()) return "請填請假時間";
+    if (!period.trim()) return "請選擇請假時間";
+    if (!total) return totalProblem ?? "請選擇請假時間";
     if (!date) return "請填申請日期";
     return null;
-  }, [template, builtinState, name, type, period, date]);
+  }, [template, templateFailed, name, type, period, total, totalProblem, date]);
 
   async function onTemplate(files: File[]) {
     const file = files[0];
@@ -175,20 +127,23 @@ export function LeaveForm() {
     try {
       const data = await file.arrayBuffer();
       const t = await inspectLeaveForm(data.slice(0));
-      setTemplate({ name: file.name, data, types: t.types });
-      setType((prev) => (prev && t.types.includes(prev) ? prev : (t.prefill.type ?? null)));
-      // 上傳的是填過的請假單時，帶入原本的內容（只填空白的欄位）
-      const fill = (cur: string, set: (v: string) => void, v?: string) => !cur.trim() && v && set(v);
-      fill(name, setName, t.prefill.name);
-      fill(dept, setDept, t.prefill.dept);
-      fill(position, setPosition, t.prefill.position);
-      fill(reason, setReason, t.prefill.reason);
-      if (t.prefill.period && !startDate) setPeriodText(t.prefill.period);
-      if (t.prefill.total && !startDate) setTotalText(t.prefill.total);
+      setTemplate({ data, types: t.types });
+      setType((prev) => (prev && t.types.includes(prev) ? prev : null));
+      setUploaded(file.name);
     } catch (e) {
       setError(e instanceof LeaveFormError ? e.message : `讀取失敗：${(e as Error).message}`);
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function restoreBuiltin() {
+    setError(null);
+    try {
+      setTemplate(await loadTemplate());
+      setUploaded(null);
+    } catch (e) {
+      setError(`內建請假單載入失敗：${(e as Error).message}`);
     }
   }
 
@@ -197,11 +152,7 @@ export function LeaveForm() {
     setBusy("fill");
     setError(null);
     try {
-      try {
-        localStorage.setItem(PROFILE_KEY, JSON.stringify({ name, dept, position }));
-      } catch {
-        /* 記不住也沒關係 */
-      }
+      saveProfile({ name, dept, position });
       const bytes = await fillLeaveForm(template.data.slice(0), info);
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
@@ -238,6 +189,7 @@ export function LeaveForm() {
           <p className="nav-link">
             <Link href="/">← 試卷審題 Exam Review</Link>
             <Link href="/compose/">組卷小幫手 Exam Composer</Link>
+            <Link href="/goout/">外出單小幫手 Going Out Form</Link>
           </p>
         </div>
       </header>
@@ -247,42 +199,7 @@ export function LeaveForm() {
       <div className="compose-steps">
         <section className="card">
           <h2>
-            1. 請假單版型
-            <Alt en="Leave form" vi="Mẫu đơn" />
-          </h2>
-          {template?.builtin ? (
-            <p className="leave-builtin">
-              <strong>使用內建 {BUILTIN_NAME}</strong>
-              <span className="muted small">不用上傳，直接往下填寫</span>
-            </p>
-          ) : (
-            builtinState === "loading" && !template && <p className="muted small leave-found">載入內建請假單中…</p>
-          )}
-          {template && !template.builtin && (
-            <p className="leave-builtin">
-              <strong>使用上傳的 {template.name}</strong>
-              {builtinState === "ready" && (
-                <button type="button" onClick={restoreBuiltin}>
-                  改回內建版型
-                </button>
-              )}
-            </p>
-          )}
-          {builtinState === "failed" && !template && (
-            <p className="muted small leave-found">內建請假單載入失敗，請上傳請假單 Word 檔。</p>
-          )}
-          <DropZone
-            label={template ? "更換版型（選填）" : "點這裡選擇或拖放請假單 .docx"}
-            hint={template ? "請假單改版時，再上傳新的 Word 檔" : "表格、勾選框、頁首都會照原樣保留"}
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            busy={busy === "template"}
-            onFiles={onTemplate}
-          />
-        </section>
-
-        <section className="card">
-          <h2>
-            2. 基本資料
+            1. 基本資料
             <Alt en="Employee" vi="Thông tin" />
           </h2>
           <div className="info-fields">
@@ -310,7 +227,7 @@ export function LeaveForm() {
 
         <section className="card">
           <h2>
-            3. 申請人簽名
+            2. 申請人簽名
             <Alt en="Applicant" vi="Người xin phép" />
           </h2>
           <div className="info-fields">
@@ -329,8 +246,32 @@ export function LeaveForm() {
           </div>
           <div className="signature-preview" aria-label="簽名欄預覽">
             <span>{signer || "　"}</span>
-            <span>{date ? slashDate(date) : "yyyy/mm/dd"}</span>
+            <span>{date ? slashDate(date) : "dd/mm/yyyy"}</span>
           </div>
+        </section>
+
+        <section className="card">
+          <h2>
+            3. 更換版型（選填）
+            <Alt en="Form template" vi="Đổi mẫu đơn" />
+          </h2>
+          {uploaded ? (
+            <p className="leave-builtin">
+              <strong>使用上傳的 {uploaded}</strong>
+              <button type="button" onClick={restoreBuiltin}>
+                改回內建版型
+              </button>
+            </p>
+          ) : (
+            <p className="muted small leave-builtin">目前使用內建的 {BUILTIN_NAME}，不用上傳。</p>
+          )}
+          <DropZone
+            label="上傳新的請假單 .docx"
+            hint="請假單改版時再上傳，表格、勾選框、頁首都會照原樣保留"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            busy={busy === "template"}
+            onFiles={onTemplate}
+          />
         </section>
       </div>
 
@@ -392,12 +333,7 @@ export function LeaveForm() {
               寫在請假單上的時間 <span className="muted">Shown on the form</span>
             </span>
             <span className="dt">
-              <input value={period} onChange={(e) => setPeriodText(e.target.value)} placeholder="選擇開始與結束時間，或直接輸入" />
-              {periodText !== null && (
-                <button type="button" onClick={() => setPeriodText(null)} title="依開始與結束時間重新產生">
-                  重算
-                </button>
-              )}
+              <input value={period} readOnly placeholder="選擇開始與結束時間後自動產生" />
             </span>
           </label>
           <label>
@@ -405,14 +341,9 @@ export function LeaveForm() {
               總計 <span className="muted">Total</span>
             </span>
             <span className="dt">
-              <input value={total} onChange={(e) => setTotalText(e.target.value)} />
-              {totalText !== null && (
-                <button type="button" onClick={() => setTotalText(null)} title="依開始與結束時間重新計算">
-                  重算
-                </button>
-              )}
+              <input value={total} readOnly />
             </span>
-            {totalProblem && totalText === null && (
+            {totalProblem && (
               <span className="total-problem" role="status">
                 {totalProblem}
               </span>
@@ -421,7 +352,7 @@ export function LeaveForm() {
         </div>
         <p className="muted small">
           依上班時間 {WORK_START}–{WORK_END} 計算（一天 9 小時，週六、週日也照算），不滿一天以 1 小時為單位、無條件進位，最少 1
-          小時。總計可以直接修改。
+          小時。
         </p>
 
         <h3>
