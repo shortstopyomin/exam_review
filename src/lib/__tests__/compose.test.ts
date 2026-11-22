@@ -1,0 +1,218 @@
+import JSZip from "jszip";
+import { describe, expect, it } from "vitest";
+import { AlignmentType, Document, LevelFormat, Packer, Paragraph, TextRun } from "docx";
+import {
+  composeExam,
+  defaultSectionFor,
+  detectExamInfo,
+  detectExamType,
+  inspectTemplate,
+  loadDocxSource,
+  markDuplicates,
+  outputFileName,
+} from "../compose/compose";
+import { formatEqField, parseXml, previewParagraph, replaceInParagraph, W, paragraphText } from "../compose/xml";
+import { parseDocx } from "../docx/parse";
+
+const p = (text: string, opts = {}) => new Paragraph({ children: [new TextRun(text)], ...opts });
+const q = (text: string, ref = "q") => new Paragraph({ children: [new TextRun(text)], numbering: { reference: ref, level: 0 } });
+
+async function build(children: Paragraph[]): Promise<Uint8Array> {
+  const doc = new Document({
+    numbering: {
+      config: [
+        { reference: "q", levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "(　　)%1.", alignment: AlignmentType.LEFT }] },
+        { reference: "c", levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.", alignment: AlignmentType.LEFT }] },
+      ],
+    },
+    sections: [{ children }],
+  });
+  return new Uint8Array(await Packer.toBuffer(doc));
+}
+
+const template = () =>
+  build([
+    // 「Midterm」拆在兩個 run，測試跨 run 取代
+    // 年級的「8」是紅字、獨立一個 run（跟真實版型一樣），換掉後「年級」不能變紅
+    new Paragraph({
+      children: [
+        new TextRun("越華國際學校 2026-2027 學年度 第 1學期 "),
+        new TextRun({ text: "8", color: "FF0000" }),
+        new TextRun("年級 數學 期中評量試卷"),
+      ],
+    }),
+    new Paragraph({
+      children: [new TextRun("Grade 8 Math Mid"), new TextRun("term Exam of Semester 1 Year 2026-2027")],
+    }),
+    p("Instructions: Show your final answer clearly."),
+    p("Part 1選擇題 / Multiple choice (每題4分，共40分)"),
+    q("版型選擇題一"),
+    p("(A)1 (B)2 (C)3 (D)4"),
+    p(""),
+    p("Part 2計算題和應用題 / Calculation and word problems (每題5分，共60分)"),
+    q("版型計算題一", "c"),
+    p(""),
+  ]);
+
+const source = () =>
+  build([
+    p("某某學校 期末考"),
+    p("一、選擇題（每題 2 分，共 4 分）"),
+    p("( B )1. 下列哪一個數是質數？"),
+    p("(A) 21 (B) 27 (C) 31 (D) 33"),
+    p("( )2. 若 x + 3 = 7，則 x = ？"),
+    p("(A) 3 (B) 4 (C) 7 (D) 10"),
+    p("二、填充題（每格 2 分，共 4 分）"),
+    p("1. 15 與 20 的最大公因數為 (  )。"),
+    p("2. |-7| = (  )。"),
+    p("三、計算題"),
+    p("1. 計算 (-3)² + 4 × (-2) 的值。（8 分）"),
+    p(""),
+    p(""),
+  ]);
+
+async function texts(bytes: Uint8Array) {
+  const doc = await parseDocx(bytes);
+  return doc.paragraphs.map((x) => x.text);
+}
+
+describe("compose", () => {
+  it("reads template sections and exam type", async () => {
+    const info = await inspectTemplate(await template(), "t.docx");
+    expect(info.sections.map((s) => s.kind)).toEqual(["choice", "short"]);
+    expect(info).toMatchObject({ examType: "midterm", startYear: 2026, semester: 1, grade: 8 });
+  });
+
+  it("extracts questions and strips typed numbers from preview", async () => {
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    expect(src.questions.map((x) => [x.kind, x.number])).toEqual([
+      ["choice", 1],
+      ["choice", 2],
+      ["fill", 1],
+      ["fill", 2],
+      ["short", 1],
+    ]);
+    expect(src.questions[0].text).toBe("下列哪一個數是質數？\n(A) 21 (B) 27 (C) 31 (D) 33");
+    // 作答空白帶進題目
+    expect(src.questions[4].blocks).toHaveLength(3);
+  });
+
+  it("marks duplicates across exams, keeping the first", async () => {
+    const a = await loadDocxSource(await source(), "a.docx", 0);
+    const b = await loadDocxSource(await source(), "b.docx", 1);
+    markDuplicates([a, b]);
+    expect(a.questions.every((x) => !x.duplicateOf)).toBe(true);
+    expect(b.questions.map((x) => x.duplicateOf)).toEqual(a.questions.map((x) => x.id));
+  });
+
+  it("builds the exam into the template layout", async () => {
+    const tpl = await template();
+    const info = await inspectTemplate(tpl, "t.docx");
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const sections = info.sections.map(() => [] as typeof src.questions);
+    for (const x of src.questions) sections[defaultSectionFor(x.kind, info.sections)].push(x);
+    const out = await composeExam({ template: tpl, templateName: "t.docx", info: { examType: "final", startYear: 2027, semester: 2, grade: 9 }, sections, sources: [src] });
+    const t = (await texts(out)).filter((x) => x.trim());
+    expect(t).toEqual([
+      "越華國際學校 2027-2028 學年度 第 2學期 9年級 數學 期末評量試卷",
+      "Grade 9 Math Final Exam of Semester 2 Year 2027-2028",
+      // 「final answer」不是考試名稱，不能改
+      "Instructions: Show your final answer clearly.",
+      "Part 1選擇題 / Multiple choice (每題____分，共____分)",
+      "(　　)1. 下列哪一個數是質數？",
+      "(A) 21 (B) 27 (C) 31 (D) 33",
+      "(　　)2. 若 x + 3 = 7，則 x = ？",
+      "(A) 3 (B) 4 (C) 7 (D) 10",
+      "Part 2計算題和應用題 / Calculation and word problems (每題____分，共____分)",
+      "1. 15 與 20 的最大公因數為 (  )。",
+      "2. |-7| = (  )。",
+      "3. 計算 (-3)² + 4 × (-2) 的值。（____ 分）",
+    ]);
+    // 版型自己的題目不保留
+    expect(t.join("\n")).not.toContain("版型");
+    // 每個大題用自己的編號清單（從 1 重新開始），不沿用來源試卷的
+    const xml = await (await JSZip.loadAsync(out)).file("word/document.xml")!.async("string");
+    const numIds = [...xml.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
+    expect(numIds).toHaveLength(5);
+    expect(new Set(numIds.slice(0, 2)).size).toBe(1);
+    expect(new Set(numIds.slice(2)).size).toBe(1);
+    expect(numIds[0]).not.toBe(numIds[2]);
+    // 紅字只留在數字上
+    expect(xml).toMatch(/<w:color w:val="FF0000"\/><\/w:rPr><w:t[^>]*>9<\/w:t>/);
+    expect(xml).toMatch(/<w:t[^>]*>年級 數學 期末評量試卷<\/w:t>/);
+  });
+
+  it("switches back to midterm", async () => {
+    const tpl = await template();
+    const info = await inspectTemplate(tpl, "t.docx");
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "midterm" },
+      sections: info.sections.map(() => []),
+      sources: [],
+    });
+    const t = await texts(out);
+    expect(t[0]).toContain("期中評量");
+    // 沒給的欄位維持版型原樣
+    expect(t[0]).toBe("越華國際學校 2026-2027 學年度 第 1學期 8年級 數學 期中評量試卷");
+    expect(t[1]).toBe("Grade 8 Math Midterm Exam of Semester 1 Year 2026-2027");
+  });
+});
+
+describe("compose helpers", () => {
+  it("detects exam type", () => {
+    expect(detectExamType("Grade 8 Final Exam")).toBe("final");
+    expect(detectExamType("write your final answer")).toBeUndefined();
+    expect(detectExamType("期中評量")).toBe("midterm");
+  });
+
+  it("names the output file", () => {
+    expect(outputFileName("2026_2027_S1_Midterm_G8_Math數學考卷v2.docx", { examType: "final" })).toBe(
+      "2026_2027_S1_Final_G8_Math數學考卷v2.docx",
+    );
+    expect(
+      outputFileName("2026_2027_S1_Midterm_G8_Math數學考卷v2.docx", {
+        examType: "final",
+        startYear: 2027,
+        semester: 2,
+        grade: 10,
+      }),
+    ).toBe("2027_2028_S2_Final_G10_Math數學考卷v2.docx");
+    expect(outputFileName("2026_S1_Final_G8.docx", { examType: "midterm" })).toBe("2026_S1_Midterm_G8.docx");
+    expect(outputFileName("數學考卷.docx", { examType: "final" })).toBe("數學考卷-組卷.docx");
+  });
+
+  it("detects title fields", () => {
+    expect(detectExamInfo("越華國際學校 2026-2027 學年度 第 1學期 8年級 數學 期中評量試卷")).toEqual({
+      examType: "midterm",
+      startYear: 2026,
+      semester: 1,
+      grade: 8,
+    });
+    expect(detectExamInfo("Grade 10 Math Final Exam of Semester 2 Year 2025 - 2026")).toEqual({
+      examType: "final",
+      startYear: 2025,
+      semester: 2,
+      grade: 10,
+    });
+    expect(detectExamInfo("數學測驗")).toEqual({});
+  });
+
+  it("formats EQ fields", () => {
+    expect(formatEqField(" EQ \\R(, 147 )")).toBe("√(147)");
+    expect(formatEqField("EQ \\F(\\R(,11),3)")).toBe("(√(11))/3");
+    expect(formatEqField("EQ \\R(3,x)")).toBe("³√x");
+  });
+
+  it("replaces text across runs and previews superscripts", () => {
+    const doc = parseXml(
+      `<w:p xmlns:w="${W}"><w:r><w:t>每題</w:t></w:r><w:r><w:t>4</w:t></w:r><w:r><w:t>分 x</w:t></w:r>` +
+        `<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>2</w:t></w:r></w:p>`,
+    );
+    const para = doc.documentElement!;
+    expect(previewParagraph(para)).toBe("每題4分 x²");
+    replaceInParagraph(para, /(每題)(\d+)(分)/, (m) => `${m[1]}__${m[3]}`);
+    expect(paragraphText(para)).toBe("每題__分 x2");
+  });
+});
