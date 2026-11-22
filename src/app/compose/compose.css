@@ -1,0 +1,69 @@
+/*
+ * 組卷頁專用樣式。只在 /compose 載入，而且全部限定在 .compose 底下，
+ * 不會影響審題小幫手（首頁）。共用的顏色變數、.card、.dropzone 等來自 globals.css，只讀不改。
+ */
+.compose .nav-link { margin-top: 10px; }
+.compose .nav-link a { color: var(--header-text); font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--accent); }
+.compose .nav-link a:hover { color: #fff; border-bottom-width: 2px; }
+.compose .alert.error { margin: 0 0 16px; }
+
+.compose .compose-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; margin-bottom: 20px; }
+@media (max-width: 1000px) { .compose .compose-steps { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
+.compose .tpl-sections { margin: 10px 0 0; padding-left: 18px; font-size: 0.875rem; }
+
+.compose .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.compose .segmented button { padding: 12px 8px; font-size: 1rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.compose .segmented button span { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+.compose .segmented button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.compose .segmented button.active span { color: var(--accent-text); }
+.compose .segmented.small { margin: 0; }
+.compose .segmented.small button { padding: 6px 8px; font-size: 0.875rem; flex-direction: row; }
+
+.compose .info-fields { display: flex; flex-direction: column; gap: 10px; margin: 12px 0 8px; font-size: 0.9rem; }
+.compose .info-fields label,
+.compose .info-fields .field { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px; align-items: center; }
+.compose .info-fields .off { opacity: 0.5; }
+.compose .info-fields input,
+.compose .info-fields select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); min-width: 0; }
+.compose .info-fields input { width: 5.5em; font-variant-numeric: tabular-nums; }
+.compose .info-fields [aria-invalid="true"] { border-color: var(--error); background: var(--error-bg); }
+.compose .year-input { display: flex; align-items: center; gap: 8px; }
+.compose .file-preview { margin: 6px 0 0; overflow-wrap: anywhere; }
+.compose .file-preview code { font-size: 0.8rem; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+.compose .source-list { list-style: none; padding: 0; margin: 12px 0 0; font-size: 0.875rem; }
+.compose .source-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); }
+.compose .source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compose .source-tag { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 0 7px; border-radius: 4px; background: var(--header); color: var(--header-text); white-space: nowrap; }
+
+.compose .pick { margin-bottom: 90px; }
+.compose .pick-group + .pick-group { margin-top: 22px; }
+.compose .pick-group-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+.compose .pick-group-head h3 { margin: 0; font-size: 1rem; }
+.compose .btn-row.plain button:first-child { background: var(--surface-2); border-color: var(--border); color: var(--text); font-weight: 400; }
+.compose .btn-row.plain button:first-child:hover:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }
+
+.compose .questions { list-style: none; padding: 0; margin: 0; }
+.compose .q { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: start; padding: 10px 8px; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
+.compose .q.on { border-left-color: var(--accent); background: var(--accent-soft); }
+.compose .q-main { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; min-width: 0; }
+.compose .q-main input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); flex: none; }
+.compose .q-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.compose .q-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 0.8rem; }
+.compose .q-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: "Times New Roman", "PMingLiU", "Noto Serif TC", serif; font-size: 0.95rem; }
+.compose .q-move { font: inherit; font-size: 0.8rem; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); max-width: 220px; }
+
+.compose .compose-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px max(16px, calc((100vw - 1248px) / 2)); background: var(--surface); border-top: 3px solid var(--accent); box-shadow: 0 -2px 8px rgba(31, 35, 40, 0.08); }
+.compose .compose-bar button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 700; padding: 8px 18px; font-size: 0.95rem; }
+.compose .compose-bar button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.compose .compose-bar button.primary:disabled { background: var(--surface-2); border-color: var(--border); color: var(--muted); opacity: 1; }
+
+@media (max-width: 600px) {
+  .compose .q { grid-template-columns: minmax(0, 1fr); padding: 10px 4px; }
+  .compose .q-move { margin-left: 28px; font-size: 16px; max-width: none; }
+  .compose .info-fields input,
+  .compose .info-fields select { font-size: 16px; }
+  .compose .compose-bar { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .compose .compose-bar button.primary { width: 100%; }
+  .compose .pick { margin-bottom: 130px; }
+}
