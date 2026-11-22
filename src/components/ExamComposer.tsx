@@ -17,6 +17,7 @@ import {
   type SourceQuestion,
   type TemplateInfo,
 } from "@/lib/compose/compose";
+import { Alt, DropZone } from "@/components/DropZone";
 import { DocxParseError } from "@/lib/docx/parse";
 import { isPdf, parsePdf, PdfParseError } from "@/lib/pdf/parse";
 
@@ -35,68 +36,6 @@ const shortTitle = (t: string) => t.replace(/\s*[（(][^)）]*(?:分|points?|mar
 function errorText(e: unknown): string {
   if (e instanceof ComposeError || e instanceof DocxParseError || e instanceof PdfParseError) return e.message;
   return `解析失敗：${(e as Error).message}`;
-}
-
-function Alt({ en, vi }: { en: string; vi: string }) {
-  return (
-    <span className="title-alt">
-      <span lang="en">{en}</span> · <span lang="vi">{vi}</span>
-    </span>
-  );
-}
-
-function DropZone({
-  label,
-  hint,
-  accept,
-  multiple,
-  busy,
-  onFiles,
-}: {
-  label: string;
-  hint: string;
-  accept: string;
-  multiple?: boolean;
-  busy?: boolean;
-  onFiles: (files: File[]) => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  return (
-    <>
-      <div
-        className={`dropzone${dragging ? " dragging" : ""}`}
-        onClick={() => input.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          onFiles(Array.from(e.dataTransfer.files));
-        }}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
-      >
-        <strong>{busy ? "解析中…" : label}</strong>
-        <span className="muted small">{hint}</span>
-      </div>
-      <input
-        ref={input}
-        type="file"
-        accept={accept}
-        multiple={multiple}
-        hidden
-        onChange={(e) => {
-          onFiles(Array.from(e.target.files ?? []));
-          e.target.value = "";
-        }}
-      />
-    </>
-  );
 }
 
 export function ExamComposer() {
@@ -296,6 +235,7 @@ export function ExamComposer() {
           </p>
           <p className="nav-link">
             <Link href="/">← 試卷審題 Exam Review</Link>
+            <Link href="/leave/">請假單小幫手 Leave Form</Link>
           </p>
         </div>
       </header>

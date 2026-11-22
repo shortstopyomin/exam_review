@@ -129,11 +129,18 @@ export function ExamReviewer() {
             Tải lên đề thi PDF hoặc Word để tự động kiểm tra số thứ tự câu hỏi, điểm số, các phương án lựa chọn và nội dung
             theo tệp quy tắc. Tệp chỉ được xử lý trong trình duyệt của bạn và không được tải lên bất kỳ máy chủ nào.
           </p>
-          {/* 另一個功能：組卷（/compose/），審題本身不依賴它 */}
+          {/* 其他功能：組卷（/compose/）、請假單（/leave/），審題本身不依賴它們 */}
           <Link href="/compose/" className="feature-link">
             <span>組卷小幫手</span>
             <span className="feature-link-alt">
               <span lang="en">Exam Composer</span> · <span lang="vi">Ghép đề thi</span>
+            </span>
+            <span aria-hidden="true">→</span>
+          </Link>
+          <Link href="/leave/" className="feature-link">
+            <span>請假單小幫手</span>
+            <span className="feature-link-alt">
+              <span lang="en">Leave Form</span> · <span lang="vi">Đơn xin phép</span>
             </span>
             <span aria-hidden="true">→</span>
           </Link>
