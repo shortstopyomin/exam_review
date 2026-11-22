@@ -2,7 +2,7 @@
  * 組卷頁專用樣式。只在 /compose 載入，而且全部限定在 .compose 底下，
  * 不會影響審題小幫手（首頁）。共用的顏色變數、.card、.dropzone 等來自 globals.css，只讀不改。
  */
-.compose .nav-link { margin-top: 10px; }
+.compose .nav-link { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .compose .nav-link a { color: var(--header-text); font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--accent); }
 .compose .nav-link a:hover { color: #fff; border-bottom-width: 2px; }
 .compose .alert.error { margin: 0 0 16px; }
