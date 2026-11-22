@@ -1,0 +1,71 @@
+/*
+ * 主選單「越聰越懶的小島」。頁首沿用其他頁的深灰＋橘色（.app-header），
+ * 右邊多一張小島插圖；下面是功能卡片，全部限定在 .island 底下。
+ */
+.island { max-width: 1040px; }
+
+.island-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 28px 28px 24px; margin-bottom: 28px; }
+.island-hero h1 { font-size: 1.9rem; }
+.island-art { flex: none; width: 240px; height: auto; }
+
+.island-group { margin-bottom: 26px; }
+.island-group h2 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; padding-left: 10px; border-left: 4px solid var(--accent); font-size: 1.1rem; }
+.island-group h2 .muted { font-size: 0.85rem; font-weight: 500; }
+
+.island-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+.island-tool {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.island-tool:hover { border-color: var(--accent); box-shadow: 0 6px 18px rgba(31, 35, 40, 0.1); transform: translateY(-2px); }
+.island-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.island-tool-icon { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+.island-tool:hover .island-tool-icon { background: var(--accent); color: var(--accent-text); }
+
+.island-tool-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.island-tool-text strong { font-size: 1.08rem; }
+.island-tool-alt { font-size: 0.8rem; color: var(--muted); }
+.island-tool-desc { margin-top: 4px; font-size: 0.875rem; line-height: 1.5; }
+
+.island-tool-arrow { flex: none; font-size: 1.2rem; color: var(--muted); transition: transform 0.15s, color 0.15s; }
+.island-tool:hover .island-tool-arrow { color: var(--accent); transform: translateX(3px); }
+
+.island-note { margin: 8px 0 0; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .island-tool, .island-tool-arrow { transition: none; }
+  .island-tool:hover { transform: none; }
+}
+
+/* 平板：卡片改一欄，插圖縮小 */
+@media (max-width: 760px) {
+  .island-tools { grid-template-columns: minmax(0, 1fr); }
+  .island-art { width: 170px; }
+}
+
+/* 手機：插圖放到標題上方，卡片更緊湊 */
+@media (max-width: 600px) {
+  .island-hero { flex-direction: column-reverse; align-items: stretch; gap: 8px; padding: 16px 16px 14px; margin-bottom: 20px; }
+  .island-hero h1 { font-size: 1.45rem; }
+  .island-art { width: 150px; align-self: center; }
+  .island-group h2 { flex-wrap: wrap; gap: 2px 8px; }
+  .island-tool { padding: 14px; gap: 12px; }
+  .island-tool-icon { width: 44px; height: 44px; }
+}
+
+/* 手機橫向：畫面很矮，插圖不要佔掉一半 */
+@media (max-height: 500px) {
+  .island-hero { flex-direction: row; padding: 14px 18px; }
+  .island-art { width: 120px; }
+}
