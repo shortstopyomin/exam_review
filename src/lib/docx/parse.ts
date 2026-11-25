@@ -41,7 +41,8 @@ function wAttr(node: XNode | undefined, name: string): string | null {
 }
 
 function parseXml(xml: string): XNode {
-  return new DOMParser().parseFromString(xml, "text/xml") as unknown as XNode;
+  // 有些工具存檔時會在 XML 前面加 UTF-8 BOM（Word 可以開），xmldom 會因此報錯
+  return new DOMParser().parseFromString(xml.replace(/^﻿/, ""), "text/xml") as unknown as XNode;
 }
 
 function root(doc: XNode): XNode | undefined {

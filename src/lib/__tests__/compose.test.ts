@@ -101,6 +101,18 @@ describe("compose", () => {
     expect(src.questions[4].blocks).toHaveLength(3);
   });
 
+  it("reads Word files whose XML parts start with a UTF-8 BOM", async () => {
+    // 有些題庫系統匯出的 .docx，每個 XML 開頭都有 BOM，Word 開得了但 xmldom 會報錯
+    const zip = await JSZip.loadAsync(await source());
+    for (const f of Object.values(zip.files)) {
+      if (f.dir || !/\.(xml|rels)$/.test(f.name)) continue;
+      zip.file(f.name, "﻿" + (await f.async("string")));
+    }
+    const bom = await zip.generateAsync({ type: "uint8array" });
+    const src = await loadDocxSource(bom, "bom.docx", 0);
+    expect(src.questions).toHaveLength(5);
+  });
+
   it("marks duplicates across exams, keeping the first", async () => {
     const a = await loadDocxSource(await source(), "a.docx", 0);
     const b = await loadDocxSource(await source(), "b.docx", 1);
