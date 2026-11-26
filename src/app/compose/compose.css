@@ -40,6 +40,11 @@
 .compose .pick-group + .pick-group { margin-top: 22px; }
 .compose .pick-group-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 .compose .pick-group-head h3 { margin: 0; font-size: 1rem; }
+.compose .score-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.875rem; }
+.compose .score-row label { display: flex; align-items: center; gap: 6px; }
+.compose .score-row input { width: 4.5em; font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.compose .score-row input[aria-invalid="true"] { border-color: var(--error); background: var(--error-bg); }
+.compose .score-total { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .compose .btn-row.plain button:first-child { background: var(--surface-2); border-color: var(--border); color: var(--text); font-weight: 400; }
 .compose .btn-row.plain button:first-child:hover:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }
 
@@ -62,7 +67,8 @@
   .compose .q { grid-template-columns: minmax(0, 1fr); padding: 10px 4px; }
   .compose .q-move { margin-left: 28px; font-size: 16px; max-width: none; }
   .compose .info-fields input,
-  .compose .info-fields select { font-size: 16px; }
+  .compose .info-fields select,
+  .compose .score-row input { font-size: 16px; }
   .compose .compose-bar { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .compose .compose-bar button.primary { width: 100%; }
   .compose .pick { margin-bottom: 130px; }

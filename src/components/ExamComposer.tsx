@@ -6,11 +6,13 @@ import {
   ComposeError,
   composeExam,
   defaultSectionFor,
+  formatScore,
   inspectTemplate,
   loadDocxSource,
   loadPdfSource,
   markDuplicates,
   outputFileName,
+  sectionTotal,
   type ExamInfo,
   type ExamType,
   type SourceExam,
@@ -33,6 +35,10 @@ const sourceLabel = (i: number) => `試卷 ${LETTERS[i % 26]}${i >= 26 ? Math.fl
 /** 大題標題去掉配分說明，只留名稱 */
 const shortTitle = (t: string) => t.replace(/\s*[（(][^)）]*(?:分|points?|marks?|%|％)[^)）]*[)）]\s*$/i, "").trim();
 
+/** 每題配分：正數，最多兩位小數；空白代表不指定 */
+const SCORE_RE = /^\d{1,3}(?:\.\d{1,2})?$/;
+const parseScore = (v: string | undefined) => (v && SCORE_RE.test(v) && Number(v) > 0 ? Number(v) : undefined);
+
 function errorText(e: unknown): string {
   if (e instanceof ComposeError || e instanceof DocxParseError || e instanceof PdfParseError) return e.message;
   return `解析失敗：${(e as Error).message}`;
@@ -48,6 +54,8 @@ export function ExamComposer() {
   const [sources, setSources] = useState<SourceExam[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [placement, setPlacement] = useState<Record<string, number>>({});
+  /** 各大題的每題配分（輸入框文字，索引對應版型的大題） */
+  const [scores, setScores] = useState<string[]>([]);
   const [filter, setFilter] = useState<number | "all">("all");
   const [busy, setBusy] = useState<"template" | "sources" | "compose" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +96,7 @@ export function ExamComposer() {
       setSemester(info.semester !== undefined ? String(info.semester) : "");
       setGrade(info.grade !== undefined ? String(info.grade) : "");
       setPlacement({});
+      setScores(info.sections.map((s) => (s.perQuestionScore !== undefined ? formatScore(s.perQuestionScore) : "")));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -155,6 +164,11 @@ export function ExamComposer() {
 
   const picked = groups.map((g) => g.questions.filter((q) => selected.has(q.id)));
   const pickedCount = picked.reduce((a, g) => a + g.length, 0);
+  // 題數用這次勾選的題目數，不看原試卷題號（原卷可能跳號）
+  const perScores = groups.map((_, i) => parseScore(scores[i]));
+  const totals = picked.map((g, i) => sectionTotal(perScores[i], g.length));
+  const scoresBad = groups.some((_, i) => scores[i] && perScores[i] === undefined);
+  const grandTotal = totals.every((t) => t !== undefined) ? totals.reduce((a, t) => a + t!, 0) : undefined;
   const pdfPicked = picked.some((g) => g.some((q) => q.lines));
 
   async function download() {
@@ -168,6 +182,7 @@ export function ExamComposer() {
         info: examInfo,
         sections: picked,
         sources,
+        scores: perScores,
       });
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
@@ -214,7 +229,9 @@ export function ExamComposer() {
             ? "年級請填 1–12"
             : !pickedCount
               ? "請至少勾選一題"
-              : null;
+              : scoresBad
+                ? "配分請填正數（最多兩位小數）"
+                : null;
 
   return (
     <div className="app compose">
@@ -420,7 +437,8 @@ export function ExamComposer() {
 
           {groups.map((g, si) => {
             const shown = g.questions.filter((q) => filter === "all" || q.sourceIndex === filter);
-            const count = g.questions.filter((q) => selected.has(q.id)).length;
+            const count = picked[si].length;
+            const bad = !!scores[si] && perScores[si] === undefined;
             return (
               <div key={si} className="pick-group">
                 <div className="pick-group-head">
@@ -431,6 +449,33 @@ export function ExamComposer() {
                       已選 {count} / {g.questions.length}
                     </span>
                   </h3>
+                  <div className="score-row">
+                    <label>
+                      每題
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        maxLength={6}
+                        placeholder="—"
+                        value={scores[si] ?? ""}
+                        aria-invalid={bad}
+                        aria-label={`${shortTitle(g.sec.title)} 每題配分`}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d.]/g, "");
+                          setScores((prev) => {
+                            const next = [...prev];
+                            next[si] = v;
+                            return next;
+                          });
+                        }}
+                      />
+                      分
+                    </label>
+                    <span className="score-total">
+                      {count} 題 × {perScores[si] !== undefined ? formatScore(perScores[si]) : "—"} 分 ＝{" "}
+                      <strong>{totals[si] !== undefined ? `${formatScore(totals[si])} 分` : "—"}</strong>
+                    </span>
+                  </div>
                   <div className="btn-row plain">
                     <button onClick={() => setMany(shown, true)} disabled={!shown.length}>
                       全選
@@ -493,6 +538,13 @@ export function ExamComposer() {
             <span className="muted small">
               {" "}
               （{groups.map((g, i) => `${shortTitle(g.sec.title).split(/\s*\/\s*/)[0]} ${picked[i].length}`).join("、")}）
+            </span>
+          )}
+          {pickedCount > 0 && (
+            <span className="small">
+              {" "}
+              · 總分 <strong>{grandTotal !== undefined ? formatScore(grandTotal) : "—"}</strong>
+              {grandTotal === undefined && <span className="muted"> （還有大題沒填配分）</span>}
             </span>
           )}
           {pdfPicked && <span className="muted small"> · PDF 題目只有文字，算式和圖要再補</span>}

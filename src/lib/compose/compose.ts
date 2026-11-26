@@ -110,6 +110,8 @@ function stripTypedNumber(p: Element) {
 export interface TemplateSection {
   title: string;
   kind: SectionKind;
+  /** 版型標題寫的「每題 X 分」，當作預設配分 */
+  perQuestionScore?: number;
 }
 
 /** 考卷標題裡可以改的資訊 */
@@ -136,7 +138,7 @@ export async function inspectTemplate(data: ArrayBuffer | Uint8Array, fileName: 
     .map((p) => p.text)
     .join("\n");
   return {
-    sections: sections.map((s) => ({ title: s.title, kind: s.kind })),
+    sections: sections.map((s) => ({ title: s.title, kind: s.kind, perQuestionScore: s.perQuestionScore })),
     ...detectExamInfo(before),
   };
 }
@@ -467,23 +469,51 @@ export interface ComposeRequest {
   /** 依大題排好的題目（陣列索引對應版型的大題） */
   sections: SourceQuestion[][];
   sources: SourceExam[];
+  /** 各大題的每題配分（陣列索引對應版型的大題）；沒給的大題配分留空格 */
+  scores?: (number | undefined)[];
 }
 
-/** 大題標題裡的配分數字換成空格，讓老師自己填 */
+/** 沒指定配分時，大題標題裡的配分數字換成空格，讓老師自己填 */
 const SCORE_BLANK = "____";
-const SCORE_PATTERNS: RegExp[] = [
-  /(每小?題|每(?:一|個)?(?:格|空格?|小格)|共)(\s*)\d+(?:\.\d+)?(\s*分)/g,
-  /(^|[^\w.])\d+(?:\.\d+)?(\s*(?:points?|pts?\.?|marks?)\b)/gi,
-  /(total(?:\s+of)?\s*[:：]?\s*)\d+(?:\.\d+)?/gi,
-  /(^|[^\w.])\d+(?:\.\d+)?(\s*[%％])/g,
+const NUM = String.raw`\d+(?:\.\d+)?`;
+const UNIT = String.raw`(?:points?|pts?\.?|marks?)`;
+// 先換成記號再填數字，總分填進去後才不會又被當成每題配分換掉
+const PER_MARK = "";
+const TOTAL_MARK = "";
+/** 大題總分：「共 40 分」「Total: 40」「40 points total」「(40 marks)」「40%」 */
+const TOTAL_PATTERNS: RegExp[] = [
+  new RegExp(String.raw`(共\s*)${NUM}(\s*分)`, "g"),
+  new RegExp(String.raw`(total(?:\s+of)?\s*[:：]?\s*)${NUM}`, "gi"),
+  new RegExp(String.raw`(^|[^\w.])${NUM}(\s*${UNIT}\s*(?:in\s+)?total)`, "gi"),
+  new RegExp(String.raw`([(（]\s*)${NUM}(\s*${UNIT}\s*[)）])`, "gi"),
+  new RegExp(String.raw`(^|[^\w.])${NUM}(\s*[%％])`, "g"),
 ];
-const QUESTION_SCORE = /([（(\[]\s*)\d+(?:\.\d+)?(\s*(?:分|points?|pts?\.?|marks?)\s*[)）\]])/gi;
+/** 每題配分：「每題 4 分」「每格 2 分」「4 points each」 */
+const PER_ZH = new RegExp(String.raw`(每小?題|每(?:一|個)?(?:格|空格?|小格))(\s*)${NUM}(\s*分)`, "g");
+const PER_EN = new RegExp(String.raw`(^|[^\w.])${NUM}(\s*${UNIT}\b)`, "gi");
+const PER_BLANK_EN = /\b(per|each|for\s+each)(\s+)(?:blank|box)(?:es)?\b/gi;
+const QUESTION_SCORE = new RegExp(String.raw`([（(\[]\s*)${NUM}(\s*(?:分|${UNIT})\s*[)）\]])`, "gi");
 
-export function blankScores(p: Element) {
-  replaceInParagraph(p, SCORE_PATTERNS[0], (m) => `${m[1]}${m[2]}${SCORE_BLANK}${m[3]}`);
-  replaceInParagraph(p, SCORE_PATTERNS[1], (m) => `${m[1]}${SCORE_BLANK}${m[2]}`);
-  replaceInParagraph(p, SCORE_PATTERNS[2], (m) => `${m[1]}${SCORE_BLANK}`);
-  replaceInParagraph(p, SCORE_PATTERNS[3], (m) => `${m[1]}${SCORE_BLANK}${m[2]}`);
+/** 分數顯示：最多兩位小數，避免 0.1 + 0.2 的浮點誤差 */
+export const formatScore = (n: number) => String(Math.round(n * 100) / 100);
+
+/** 大題總分 = 每題配分 × 題數（題數是這次選進來的題目數，跟原試卷題號無關） */
+export function sectionTotal(perQuestion: number | undefined, count: number): number | undefined {
+  return perQuestion === undefined ? undefined : Math.round(perQuestion * count * 100) / 100;
+}
+
+/**
+ * 大題標題的配分：有指定每題配分就填入每題分數和總分，「每格」改成「每題」；
+ * 沒指定的留空格。
+ */
+export function fillScores(p: Element, perQuestion?: number, total?: number) {
+  for (const re of TOTAL_PATTERNS) replaceInParagraph(p, re, (m) => `${m[1]}${TOTAL_MARK}${m[2] ?? ""}`);
+  const per = perQuestion !== undefined;
+  replaceInParagraph(p, PER_ZH, (m) => `${per ? "每題" : m[1]}${m[2]}${PER_MARK}${m[3]}`);
+  replaceInParagraph(p, PER_EN, (m) => `${m[1]}${PER_MARK}${m[2]}`);
+  if (per) replaceInParagraph(p, PER_BLANK_EN, (m) => `${m[1]}${m[2]}question`);
+  replaceInParagraph(p, new RegExp(PER_MARK, "g"), () => (per ? formatScore(perQuestion) : SCORE_BLANK));
+  replaceInParagraph(p, new RegExp(TOTAL_MARK, "g"), () => (total !== undefined ? formatScore(total) : SCORE_BLANK));
 }
 
 
@@ -668,7 +698,13 @@ class Composer {
   }
 
   /** 複製來源試卷一題的所有元素到版型文件 */
-  async importQuestion(q: SourceQuestion, src: SourceExam, numbering: SectionNumbering, index: number): Promise<Element[]> {
+  async importQuestion(
+    q: SourceQuestion,
+    src: SourceExam,
+    numbering: SectionNumbering,
+    index: number,
+    perQuestion?: number,
+  ): Promise<Element[]> {
     if (q.lines) return this.pdfQuestion(q.lines, numbering, index);
     const out: Element[] = [];
     for (const b of q.blocks!) out.push(this.doc.importNode(b, true) as Element);
@@ -691,7 +727,8 @@ class Composer {
     }
     if (first) this.applyQuestionNumber(first, numbering, index);
     for (const el of out) for (const p of [...(is(el, W, "p") ? [el] : []), ...descendants(el, W, "p")]) {
-      replaceInParagraph(p, QUESTION_SCORE, (m) => `${m[1]}${SCORE_BLANK}${m[2]}`);
+      // 題目後面原本的「（8 分）」：換成這次的每題配分，沒指定就留空格
+      replaceInParagraph(p, QUESTION_SCORE, (m) => `${m[1]}${perQuestion !== undefined ? formatScore(perQuestion) : SCORE_BLANK}${m[2]}`);
     }
     // 空白行比版型少時補足（原卷題目之間沒空行、計算題沒留作答空間）
     let blanks = 0;
@@ -862,9 +899,12 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
       : nextSection
         ? blockOf[nextSection.paragraphIndex]
         : blocks.length;
-    // 2. 大題標題（和下一行的配分說明）：配分數字空白
+    // 2. 大題標題（和下一行的配分說明）：填入每題配分和總分，沒指定就留空格
+    const picked = req.sections[si] ?? [];
+    const perQuestion = req.scores?.[si];
+    const total = sectionTotal(perQuestion, picked.length);
     const header = blocks.slice(headerStart, headerEnd).filter((b) => !is(b, W, "sectPr"));
-    for (const b of header) if (is(b, W, "p")) blankScores(b);
+    for (const b of header) if (is(b, W, "p")) fillScores(b, perQuestion, total);
     output.push(...header);
 
     // 3. 這個大題的編號方式：沿用版型第一題
@@ -908,12 +948,11 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
       numbering.manualPrefix = "#. ";
     }
 
-    const picked = req.sections[si] ?? [];
     for (let qi = 0; qi < picked.length; qi++) {
       const q = picked[qi];
       const src = req.sources.find((s) => s.index === q.sourceIndex);
       if (!src) throw new ComposeError("找不到題目的來源試卷。");
-      output.push(...(await composer.importQuestion(q, src, numbering, qi)));
+      output.push(...(await composer.importQuestion(q, src, numbering, qi, perQuestion)));
     }
   }
 

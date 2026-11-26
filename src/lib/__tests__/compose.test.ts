@@ -5,6 +5,8 @@ import {
   composeExam,
   defaultSectionFor,
   detectExamInfo,
+  fillScores,
+  sectionTotal,
   detectExamType,
   inspectTemplate,
   loadDocxSource,
@@ -188,9 +190,48 @@ describe("compose", () => {
     expect(t[0]).toBe("越華國際學校 2026-2027 學年度 第 1學期 8年級 數學 期中評量試卷");
     expect(t[1]).toBe("Grade 8 Math Midterm Exam of Semester 1 Year 2026-2027");
   });
+
+  it("fills per-question scores and section totals from the picked count", async () => {
+    const tpl = await template();
+    const info = await inspectTemplate(tpl, "t.docx");
+    // 版型寫的「每題4分」「每題5分」當預設值
+    expect(info.sections.map((s) => s.perQuestionScore)).toEqual([4, 5]);
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const sections = info.sections.map(() => [] as typeof src.questions);
+    for (const x of src.questions) sections[defaultSectionFor(x.kind, info.sections)].push(x);
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections,
+      sources: [src],
+      scores: [2.5, 10],
+    });
+    const t = (await texts(out)).filter((x) => x.trim());
+    // 選擇題 2 題 × 2.5，非選 3 題 × 10
+    expect(t).toContain("Part 1選擇題 / Multiple choice (每題2.5分，共5分)");
+    expect(t).toContain("Part 2計算題和應用題 / Calculation and word problems (每題10分，共30分)");
+    // 題目後面的單題配分換成這次的每題配分
+    expect(t).toContain("3. 計算 (-3)² + 4 × (-2) 的值。（10 分）");
+  });
 });
 
 describe("compose helpers", () => {
+  it("fills score text in section titles", () => {
+    const fill = (text: string, per?: number, total?: number) => {
+      const para = parseXml(`<w:p xmlns:w="${W}"><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`).documentElement!;
+      fillScores(para, per, total);
+      return paragraphText(para);
+    };
+    expect(fill("一、 填充題 （每格2分，共58分）", 3, 72)).toBe("一、 填充題 （每題3分，共72分）");
+    expect(fill("一、 填充題 （每格2分，共58分）")).toBe("一、 填充題 （每格____分，共____分）");
+    expect(fill("Part 1 (5 points each, 60 points total)", 4, 40)).toBe("Part 1 (4 points each, 40 points total)");
+    expect(fill("2 points per blank, Total: 30", 3, 9)).toBe("3 points per question, Total: 9");
+    expect(fill("二、選擇題（40％，每題4分）", 5, 50)).toBe("二、選擇題（50％，每題5分）");
+    expect(sectionTotal(0.1, 3)).toBe(0.3);
+    expect(sectionTotal(undefined, 3)).toBeUndefined();
+  });
+
   it("detects exam type", () => {
     expect(detectExamType("Grade 8 Final Exam")).toBe("final");
     expect(detectExamType("write your final answer")).toBeUndefined();
