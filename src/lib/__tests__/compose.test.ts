@@ -219,6 +219,23 @@ describe("compose", () => {
     expect(t.find((x) => x.includes("計算 (-3)²"))).toBe("1. (  ) 計算 (-3)² + 4 × (-2) 的值。（____ 分）");
   });
 
+  it("adds the score to section titles that have no score text", async () => {
+    const tpl = await build([p("一、選擇題（每格2分，共58分）"), q("版型選擇題一"), p("二、計算題"), p("1. 版型計算題一")]);
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections: [src.questions.filter((x) => x.kind === "choice"), src.questions.filter((x) => x.kind === "short")],
+      sources: [src],
+      scores: [8, 12.5],
+    });
+    const t = (await texts(out)).filter((x) => x.trim());
+    // 「每格」改成「每題」並填入分數；標題沒寫配分的補上
+    expect(t).toContain("一、選擇題（每題8分，共16分）");
+    expect(t).toContain("二、計算題（每題12.5分，共12.5分）");
+  });
+
   it("fills per-question scores and section totals from the picked count", async () => {
     const tpl = await template();
     const info = await inspectTemplate(tpl, "t.docx");
@@ -279,7 +296,13 @@ describe("compose helpers", () => {
       }),
     ).toBe("2027_2028_S2_Final_G10_Math數學考卷v2.docx");
     expect(outputFileName("2026_S1_Final_G8.docx", { examType: "midterm" })).toBe("2026_S1_Midterm_G8.docx");
-    expect(outputFileName("數學考卷.docx", { examType: "final" })).toBe("數學考卷-組卷.docx");
+    // 檔名跟版型一樣時，版本號往上加：沒有的加 v1，vN 改成 v(N+1)
+    expect(outputFileName("數學考卷.docx", { examType: "final" })).toBe("數學考卷v1.docx");
+    expect(outputFileName("數學考卷v1.docx", { examType: "final" })).toBe("數學考卷v2.docx");
+    expect(outputFileName("G10_Math_Final_V3.docx", { examType: "final" })).toBe("G10_Math_Final_V4.docx");
+    expect(outputFileName("20261125_G10_Math_Final_Choice-題目卷.docx", { examType: "final" })).toBe(
+      "20261125_G10_Math_Final_Choice-題目卷v1.docx",
+    );
   });
 
   it("adds a version number when the file name was already used", () => {
@@ -290,7 +313,7 @@ describe("compose helpers", () => {
     // 原檔名已有 vN：改成 v(N+1)
     expect(versionedFileName("Final_G8_數學考卷v2.docx", ["Final_G8_數學考卷v2.docx"])).toBe("Final_G8_數學考卷v3.docx");
     expect(versionedFileName("Math_V3.docx", ["Math_V3.docx", "Math_V4.docx"])).toBe("Math_V5.docx");
-    expect(versionedFileName("考卷v2-組卷.docx", ["考卷v2-組卷.docx"])).toBe("考卷v3-組卷.docx");
+    expect(versionedFileName("考卷v2-題目卷.docx", ["考卷v2-題目卷.docx"])).toBe("考卷v3-題目卷.docx");
     // G10、S1 不是版本號
     expect(versionedFileName("S1_G10.docx", ["S1_G10.docx"])).toBe("S1_G10_v2.docx");
   });

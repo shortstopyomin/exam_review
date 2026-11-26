@@ -215,7 +215,12 @@ export function ExamComposer() {
   const perScores = groups.map((_, i) => parseScore(scores[i]));
   const totals = picked.map((g, i) => sectionTotal(perScores[i], g.length));
   const scoresBad = groups.some((_, i) => scores[i] && perScores[i] === undefined);
-  const grandTotal = totals.every((t) => t !== undefined) ? totals.reduce((a, t) => a + t!, 0) : undefined;
+  // 有勾題目的大題都要填每題配分，Word 檔的「每題幾分，共幾分」才不會是底線
+  const scoreMissing = groups.findIndex((_, i) => picked[i].length > 0 && !scores[i]);
+  // 沒勾題目的大題算 0 分，不必填配分
+  const grandTotal = totals.every((t, i) => t !== undefined || !picked[i].length)
+    ? totals.reduce<number>((a, t) => a + (t ?? 0), 0)
+    : undefined;
   const pdfPicked = picked.some((g) => g.some((q) => q.lines));
 
   async function download() {
@@ -288,7 +293,9 @@ export function ExamComposer() {
               ? "請至少勾選一題"
               : scoresBad
                 ? "配分請填正數（最多兩位小數）"
-                : null;
+                : scoreMissing >= 0
+                  ? `請填「${shortTitle(groups[scoreMissing].sec.title)}」每題幾分`
+                  : null;
 
   return (
     <div className="app compose">
@@ -493,7 +500,7 @@ export function ExamComposer() {
           {groups.map((g, si) => {
             const shown = g.questions.filter((q) => filter === "all" || q.sourceIndex === filter);
             const count = picked[si].length;
-            const bad = !!scores[si] && perScores[si] === undefined;
+            const bad = (!!scores[si] && perScores[si] === undefined) || (count > 0 && !scores[si]);
             // 新考卷的題號：勾選的題目在這個大題裡依序重新編號，跟原題號無關
             const newNumber = new Map(picked[si].map((q, i) => [q.id, i + 1]));
             return (

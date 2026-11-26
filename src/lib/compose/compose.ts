@@ -226,16 +226,36 @@ function applyInfo(info: ExamInfo, fields: typeof TEXT_FIELDS, replace: Replacer
   set(fields.grade, info.grade);
 }
 
-/** 依考試資訊改檔名：年份、S1、G8、Midterm/Final */
+/**
+ * 依考試資訊改檔名：年份、S1、G8、Midterm/Final。
+ * 改完跟版型檔名一樣時（版型就是這次的考試），版本號往上加：
+ * 沒有版本號的加 v1，已經是 vN 的改成 v(N+1)，避免跟版型同名。
+ */
 export function outputFileName(templateName: string, info: ExamInfo): string {
   const base = templateName.replace(/\.docx$/i, "");
   let name = base;
   applyInfo(info, NAME_FIELDS, (re, to) => (name = name.replace(re, (m) => to(m))), false);
-  return `${name === base ? `${base}-組卷` : name}.docx`;
+  if (name === base) {
+    const v = lastVersion(base);
+    name = withVersion(base, v ? Number(v[2]) + 1 : 1);
+  }
+  return `${name}.docx`;
 }
 
-/** 檔名裡的版本號：「…考卷v2」「…_V3」「…v2-組卷」，取最後一個 */
+/** 檔名裡的版本號：「…考卷v2」「…_V3」，取最後一個 */
 const VERSION_RE = /(?<![A-Za-z])([vV])(\d{1,3})(?![\dA-Za-z])/g;
+
+const lastVersion = (base: string) => [...base.matchAll(VERSION_RE)].pop();
+
+/** 把版本號改成 vN；沒有版本號就加在最後（英數字結尾用底線隔開：Math_v2，中文結尾直接接：考卷v2） */
+function withVersion(base: string, n: number): string {
+  const last = lastVersion(base);
+  if (last) {
+    const i = last.index!;
+    return `${base.slice(0, i)}${last[1]}${n}${base.slice(i + last[0].length)}`;
+  }
+  return `${base}${/[A-Za-z0-9]$/.test(base) ? "_" : ""}v${n}`;
+}
 
 /**
  * 檔名重複時加版本號：沒有版本號的加「v2」，已經是 vN 的改成 v(N+1)，
@@ -246,17 +266,9 @@ export function versionedFileName(name: string, taken: Iterable<string>): string
   if (!used.has(name.toLowerCase())) return name;
   const ext = /\.docx$/i.exec(name)?.[0] ?? "";
   const base = name.slice(0, name.length - ext.length);
-  const last = [...base.matchAll(VERSION_RE)].pop();
-  const make = (n: number) => {
-    if (last) {
-      const i = last.index!;
-      return `${base.slice(0, i)}${last[1]}${n}${base.slice(i + last[0].length)}${ext}`;
-    }
-    // 英數字結尾用底線隔開（Math_v2），中文結尾直接接（考卷v2）
-    return `${base}${/[A-Za-z0-9]$/.test(base) ? "_" : ""}v${n}${ext}`;
-  };
+  const last = lastVersion(base);
   for (let n = last ? Number(last[2]) + 1 : 2; ; n++) {
-    const candidate = make(n);
+    const candidate = withVersion(base, n) + ext;
     if (!used.has(candidate.toLowerCase())) return candidate;
   }
 }
@@ -545,14 +557,22 @@ export function sectionTotal(perQuestion: number | undefined, count: number): nu
  * 大題標題的配分：有指定每題配分就填入每題分數和總分，「每格」改成「每題」；
  * 沒指定的留空格。
  */
-export function fillScores(p: Element, perQuestion?: number, total?: number) {
-  for (const re of TOTAL_PATTERNS) replaceInParagraph(p, re, (m) => `${m[1]}${TOTAL_MARK}${m[2] ?? ""}`);
+export function fillScores(p: Element, perQuestion?: number, total?: number): boolean {
+  let found = false;
+  for (const re of TOTAL_PATTERNS) found = replaceInParagraph(p, re, (m) => `${m[1]}${TOTAL_MARK}${m[2] ?? ""}`) || found;
   const per = perQuestion !== undefined;
-  replaceInParagraph(p, PER_ZH, (m) => `${per ? "每題" : m[1]}${m[2]}${PER_MARK}${m[3]}`);
-  replaceInParagraph(p, PER_EN, (m) => `${m[1]}${PER_MARK}${m[2]}`);
+  found = replaceInParagraph(p, PER_ZH, (m) => `${per ? "每題" : m[1]}${m[2]}${PER_MARK}${m[3]}`) || found;
+  found = replaceInParagraph(p, PER_EN, (m) => `${m[1]}${PER_MARK}${m[2]}`) || found;
   if (per) replaceInParagraph(p, PER_BLANK_EN, (m) => `${m[1]}${m[2]}question`);
   replaceInParagraph(p, new RegExp(PER_MARK, "g"), () => (per ? formatScore(perQuestion) : SCORE_BLANK));
   replaceInParagraph(p, new RegExp(TOTAL_MARK, "g"), () => (total !== undefined ? formatScore(total) : SCORE_BLANK));
+  return found;
+}
+
+/** 大題標題完全沒寫配分時，在標題最後補上「（每題X分，共Y分）」，沿用最後一個字的格式 */
+export function appendScores(p: Element, perQuestion: number, total: number) {
+  const text = `（每題${formatScore(perQuestion)}分，共${formatScore(total)}分）`;
+  replaceInParagraph(p, /([^\s\u3000])([\s\u3000]*)$/, (m) => `${m[1]}${text}${m[2]}`);
 }
 
 
@@ -955,7 +975,10 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
     const perQuestion = req.scores?.[si];
     const total = sectionTotal(perQuestion, picked.length);
     const header = blocks.slice(headerStart, headerEnd).filter((b) => !is(b, W, "sectPr"));
-    for (const b of header) if (is(b, W, "p")) fillScores(b, perQuestion, total);
+    let hasScoreText = false;
+    for (const b of header) if (is(b, W, "p")) hasScoreText = fillScores(b, perQuestion, total) || hasScoreText;
+    const title = blocks[headerStart];
+    if (!hasScoreText && perQuestion !== undefined && total !== undefined && is(title, W, "p")) appendScores(title, perQuestion, total);
     output.push(...header);
 
     // 3. 這個大題的編號方式：沿用版型第一題
