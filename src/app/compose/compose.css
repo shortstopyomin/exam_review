@@ -35,6 +35,39 @@
 
 .compose .pick { margin-bottom: 90px; }
 .compose .pick-group + .pick-group { margin-top: 22px; }
+/* 第 4、5 步都在時，下載列的留白只留給最後一張 */
+.compose .pick:has(+ .order-card) { margin-bottom: 20px; }
+
+/* ── 5. 題目順序（拖曳排序）── */
+.compose .order-card > p { margin: -4px 0 14px; }
+.compose .order-group + .order-group { margin-top: 22px; }
+.compose .order-group-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+.compose .order-group-head h3 { margin: 0; font-size: 1rem; }
+/* offsetTop 以列表為準；拖曳中列表底色變灰，抓起的題目留下的空位看得出來 */
+.compose .order-list { position: relative; list-style: none; margin: 0; padding: 0; border-radius: 8px; transition: background 0.15s; }
+.compose .is-dragging .order-list:has(.dragging) { background: var(--surface-2); }
+.compose .order-list li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--border); background: var(--surface); }
+/* 抓起：放大、浮在其他題目上方、明顯的陰影（位置與放大由 transform 控制） */
+.compose .order-list li.dragging,
+.compose .order-list li.settling { position: relative; z-index: 2; background: var(--surface); border-radius: 8px; border-bottom-color: transparent; outline: 2px solid var(--accent); box-shadow: 0 16px 36px rgba(31, 35, 40, 0.28), 0 3px 8px rgba(31, 35, 40, 0.14); }
+.compose .order-list li.dragging .order-handle { color: var(--accent); }
+.compose .order-list li.settling { box-shadow: 0 1px 2px rgba(31, 35, 40, 0.08); }
+.compose .order-handle { display: grid; place-items: center; width: 30px; height: 36px; padding: 0; background: transparent; border-color: transparent; color: var(--muted); cursor: grab; touch-action: none; }
+.compose .order-handle svg { fill: currentColor; }
+.compose .order-handle:hover { color: var(--accent); background: var(--accent-soft); }
+/* 有滑鼠的裝置整列都能拖 */
+@media (hover: hover) {
+  .compose .order-list li { cursor: grab; }
+  .compose .order-list li:hover:not(.dragging) { background: var(--surface-2); }
+  .compose .order-arrows button { cursor: pointer; }
+}
+.compose .is-dragging, .compose .is-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.compose .order-number { min-width: 2.2em; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.compose .order-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.compose .order-meta { display: flex; align-items: center; gap: 8px; }
+.compose .order-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.compose .order-arrows { display: flex; gap: 4px; }
+.compose .order-arrows button { width: 32px; padding: 4px 0; }
 .compose .pick-group-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 .compose .pick-group-head h3 { margin: 0; font-size: 1rem; }
 .compose .score-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.875rem; }

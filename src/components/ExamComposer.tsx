@@ -20,6 +20,7 @@ import {
   type TemplateInfo,
 } from "@/lib/compose/compose";
 import { Alt, DropZone } from "@/components/DropZone";
+import { QuestionOrder } from "@/components/QuestionOrder";
 import { DocxParseError } from "@/lib/docx/parse";
 import { isPdf, parsePdf, PdfParseError } from "@/lib/pdf/parse";
 
@@ -72,6 +73,8 @@ export function ExamComposer() {
   const [placement, setPlacement] = useState<Record<string, number>>({});
   /** 各大題的每題配分（輸入框文字，索引對應版型的大題） */
   const [scores, setScores] = useState<string[]>([]);
+  /** 手動排過的題目順序（大題索引 → 題目 id）；沒排過的大題照上傳順序、原題號 */
+  const [order, setOrder] = useState<Record<number, string[]>>({});
   const [filter, setFilter] = useState<number | "all">("all");
   const [busy, setBusy] = useState<"template" | "sources" | "compose" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +122,7 @@ export function ExamComposer() {
       setSemester(info.semester !== undefined ? String(info.semester) : "");
       setGrade(info.grade !== undefined ? String(info.grade) : "");
       setPlacement({});
+      setOrder({});
       setScores(info.sections.map((s) => (s.perQuestionScore !== undefined ? formatScore(s.perQuestionScore) : "")));
     } catch (e) {
       setError(errorText(e));
@@ -185,7 +189,27 @@ export function ExamComposer() {
       return s;
     });
 
-  const picked = groups.map((g) => g.questions.filter((q) => selected.has(q.id)));
+  // 勾選的題目，依手動排的順序。取消再勾回來的題目回到原本排的位置；
+  // 排序時還沒勾過的題目接在最後
+  const picked = groups.map((g, si) => {
+    const qs = g.questions.filter((q) => selected.has(q.id));
+    const rank = new Map((order[si] ?? []).map((id, i) => [id, i]));
+    return rank.size ? qs.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)) : qs;
+  });
+
+  const moveQuestion = (si: number, from: number, to: number) => {
+    const ids = picked[si].map((q) => q.id);
+    if (to < 0 || to >= ids.length || from === to) return;
+    const [id] = ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    setOrder((prev) => ({ ...prev, [si]: ids }));
+  };
+  const resetOrder = (si: number) =>
+    setOrder((prev) => {
+      const next = { ...prev };
+      delete next[si];
+      return next;
+    });
   const pickedCount = picked.reduce((a, g) => a + g.length, 0);
   // 題數用這次勾選的題目數，不看原試卷題號（原卷可能跳號）
   const perScores = groups.map((_, i) => parseScore(scores[i]));
@@ -562,6 +586,26 @@ export function ExamComposer() {
               </div>
             );
           })}
+        </section>
+      )}
+
+      {template && pickedCount > 0 && (
+        <section className="card pick order-card">
+          <h2>
+            5. 題目順序
+            <Alt en="Question order" vi="Thứ tự câu hỏi" />
+          </h2>
+          <p className="muted small">直接拖曳題目調整新考卷的順序（手機請按住左邊的 ⋮⋮ 拖曳），或用 ↑↓ 按鈕。題號會照這裡的順序重新編。</p>
+          <QuestionOrder
+            sections={groups.map((g, si) => ({
+              title: shortTitle(g.sec.title),
+              questions: picked[si],
+              customized: !!order[si],
+            }))}
+            sourceLabel={(q) => sourceLabel(q.sourceIndex)}
+            onMove={moveQuestion}
+            onReset={resetOrder}
+          />
         </section>
       )}
 
