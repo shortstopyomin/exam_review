@@ -44,6 +44,7 @@
 .compose .score-row label { display: flex; align-items: center; gap: 6px; }
 .compose .score-row input { width: 4.5em; font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .compose .score-row input[aria-invalid="true"] { border-color: var(--error); background: var(--error-bg); }
+.compose .badge.new-number { background: var(--accent); color: var(--accent-text); font-variant-numeric: tabular-nums; }
 .compose .score-total { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .compose .btn-row.plain button:first-child { background: var(--surface-2); border-color: var(--border); color: var(--text); font-weight: 400; }
 .compose .btn-row.plain button:first-child:hover:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }

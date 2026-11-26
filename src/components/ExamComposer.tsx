@@ -439,6 +439,8 @@ export function ExamComposer() {
             const shown = g.questions.filter((q) => filter === "all" || q.sourceIndex === filter);
             const count = picked[si].length;
             const bad = !!scores[si] && perScores[si] === undefined;
+            // 新考卷的題號：勾選的題目在這個大題裡依序重新編號，跟原題號無關
+            const newNumber = new Map(picked[si].map((q, i) => [q.id, i + 1]));
             return (
               <div key={si} className="pick-group">
                 <div className="pick-group-head">
@@ -496,6 +498,7 @@ export function ExamComposer() {
                           <input type="checkbox" checked={on} onChange={(e) => toggle(q.id, e.target.checked)} />
                           <span className="q-body">
                             <span className="q-meta">
+                              {on && <span className="badge new-number">新第 {newNumber.get(q.id)} 題</span>}
                               <span className="source-tag">{sourceLabel(q.sourceIndex)}</span>
                               <span>原第 {q.number} 題</span>
                               <span className="muted">{shortTitle(q.sectionTitle)}</span>

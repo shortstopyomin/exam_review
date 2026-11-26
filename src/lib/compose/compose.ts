@@ -94,6 +94,18 @@ export function questionPrefixLength(text: string): number {
   return m && text.length > n + m[0].length ? n + m[0].length : n;
 }
 
+/**
+ * 版型題目在題號後面手打的作答括號（「1. (   ) 設…」的「(   ) 」），
+ * 填了答案的「( B )」換成空的。題號本身就是「(　　)1.」的不算。
+ */
+function templateAnswerBracket(text: string): string | undefined {
+  const n = leadingNumberLength(text);
+  if (!n) return undefined;
+  const m = ANSWER_BRACKET_RE.exec(text.slice(n));
+  if (!m || text.length <= n + m[0].length) return undefined;
+  return m[0].replace(/^[\s\u3000]+/, "").replace(/[^\s\u3000（()）]/g, " ");
+}
+
 function stripTypedNumber(p: Element) {
   const n = questionPrefixLength(paragraphText(p));
   if (!n) return;
@@ -526,6 +538,11 @@ interface SectionNumbering {
   ilvl: string;
   /** 版型沒用自動編號時，手打題號的樣式，例如 "(　　)#." */
   manualPrefix?: string;
+  /**
+   * 版型題號後面手打的作答括號，例如自動編號「1.」後面打「(   )」。
+   * 題目匯入時括號已經和原題號一起拿掉，要照版型補回來。
+   */
+  answerBracket?: string;
   /** 版型每題後面的空白行數（選擇題通常 1 行，計算題是作答空間） */
   blankAfter: number;
   /** 版型的空白段落（沿用字級、行距），補空白行時複製它 */
@@ -764,11 +781,18 @@ class Composer {
       const order = ["keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl"];
       const after = [style, ...order.map((n) => child(pPr, n))].filter(Boolean).pop() as Element | undefined;
       pPr.insertBefore(numPr, after ? after.nextSibling : pPr.firstChild);
-    } else if (numbering.manualPrefix) {
+    }
+    const prefix = (numbering.numId ? "" : (numbering.manualPrefix ?? "").replace("#", String(index + 1))) + (numbering.answerBracket ?? "");
+    if (prefix) {
+      // 括號已經帶空格，原題開頭的空白（「4.  將…」）拿掉，避免變成「(   )  將」
+      const lead = numbering.answerBracket ? /^[ 　]*/.exec(paragraphText(p))![0].length : 0;
+      if (lead) removeLeadingChars(p, lead);
       const r = wEl(this.doc, "r");
+      // 只有作答括號時沿用版型題目的文字格式；手打題號維持原本的預設格式
+      if (numbering.numId && numbering.rPr) r.appendChild(numbering.rPr.cloneNode(true));
       const t = wEl(this.doc, "t");
       t.setAttribute("xml:space", "preserve");
-      t.appendChild(this.doc.createTextNode(numbering.manualPrefix.replace("#", String(index + 1))));
+      t.appendChild(this.doc.createTextNode(prefix));
       r.appendChild(t);
       p.insertBefore(r, pPr.nextSibling);
     }
@@ -935,6 +959,7 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
       const numPr = pPr && child(pPr, "numPr");
       const numId = wAttr(child(numPr, "numId"), "val");
       const label = parsed.paragraphs[tq.startParagraph].numberingLabel;
+      numbering.answerBracket = templateAnswerBracket(parsed.paragraphs[tq.startParagraph].text);
       if (numId && numId !== "0" && label) {
         const abs = composer.abstractOf(numId);
         numbering.ilvl = wAttr(child(numPr, "ilvl"), "val") ?? "0";

@@ -191,6 +191,33 @@ describe("compose", () => {
     expect(t[1]).toBe("Grade 8 Math Midterm Exam of Semester 1 Year 2026-2027");
   });
 
+  it("keeps the template's typed answer bracket after an auto number", async () => {
+    // 版型的自動編號只有「1.」，作答括號「(   )」是手打在後面的文字
+    const tpl = await build([
+      p("一、單一選擇題（每題8分，共96分）"),
+      q("(   ) 版型選擇題一", "c"),
+      p("二、計算題"),
+      // 手打題號、括號在題號後面
+      p("1. (  ) 版型計算題一"),
+    ]);
+    const info = await inspectTemplate(tpl, "t.docx");
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const choice = src.questions.filter((x) => x.kind === "choice");
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections: [choice, src.questions.filter((x) => x.kind === "short")],
+      sources: [src],
+    });
+    expect(info.sections).toHaveLength(2);
+    const t = (await texts(out)).filter((x) => x.trim());
+    // 原題的「( B )」答案不留，換成版型的空括號；題號重新從 1 開始
+    expect(t).toContain("1. (   ) 下列哪一個數是質數？");
+    expect(t).toContain("2. (   ) 若 x + 3 = 7，則 x = ？");
+    expect(t.find((x) => x.includes("計算 (-3)²"))).toBe("1. (  ) 計算 (-3)² + 4 × (-2) 的值。（____ 分）");
+  });
+
   it("fills per-question scores and section totals from the picked count", async () => {
     const tpl = await template();
     const info = await inspectTemplate(tpl, "t.docx");
