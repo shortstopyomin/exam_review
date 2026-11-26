@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Alt, DropZone } from "@/components/DropZone";
 import { saveProfile, todayIso, useStoredProfile } from "@/components/formProfile";
@@ -169,10 +168,6 @@ export function GoOutForm() {
           </p>
           <p className="muted" lang="vi">
             Điền thông tin và tải về đơn xin ra ngoài đã điền dưới dạng tệp Word. Dữ liệu không rời khỏi trình duyệt của bạn.
-          </p>
-          <p className="nav-link">
-            <Link href="/">← 越聰越懶的小島</Link>
-            <Link href="/leave/">請假單小幫手 Leave Form</Link>
           </p>
         </div>
       </header>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseDocx, DocxParseError } from "@/lib/docx/parse";
 import { isPdf, parsePdf, PdfParseError } from "@/lib/pdf/parse";
@@ -129,14 +128,6 @@ export function ExamReviewer() {
             Tải lên đề thi PDF hoặc Word để tự động kiểm tra số thứ tự câu hỏi, điểm số, các phương án lựa chọn và nội dung
             theo tệp quy tắc. Tệp chỉ được xử lý trong trình duyệt của bạn và không được tải lên bất kỳ máy chủ nào.
           </p>
-          {/* 回主選單；其他功能（組卷、請假單、外出單）都從小島進入 */}
-          <Link href="/" className="feature-link">
-            <span aria-hidden="true">←</span>
-            <span>越聰越懶的小島</span>
-            <span className="feature-link-alt">
-              <span lang="en">All tools</span> · <span lang="vi">Tất cả công cụ</span>
-            </span>
-          </Link>
         </div>
       </header>
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ComposeError,
@@ -283,11 +282,6 @@ export function ExamComposer() {
           <p className="muted" lang="en">
             Upload a template and several exams, tick the questions you want, and download a new Word exam that keeps the
             template&apos;s header, footer, and layout. Files never leave your browser.
-          </p>
-          <p className="nav-link">
-            <Link href="/">← 越聰越懶的小島</Link>
-            <Link href="/leave/">請假單小幫手 Leave Form</Link>
-            <Link href="/goout/">外出單小幫手 Going Out Form</Link>
           </p>
         </div>
       </header>

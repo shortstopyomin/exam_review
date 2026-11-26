@@ -30,6 +30,8 @@
 html, body { margin: 0; }
 /* iPhone 橫向時 Safari 不要自動放大文字 */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* 捲動到某段（審題結果、段落）時不要被上方網站列蓋住 */
+html { scroll-padding-top: 60px; }
 
 body {
   background: var(--bg);
@@ -71,7 +73,8 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
 
 .layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
 @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-.side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 16px; }
+/* top：網站列 48px 再往下 16px */
+.side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 64px; }
 @media (max-width: 900px) { .side { position: static; } }
 .main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
@@ -269,23 +272,22 @@ button:focus-visible, .dropzone:focus-visible { outline: 2px solid var(--accent)
   .side { position: static; }
 }
 
-/* ── 首頁頁首：前往組卷功能的按鈕（只新增這個 class，不改其他樣式）── */
-.feature-link {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 14px;
-  padding: 7px 14px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--header-text);
-  font-weight: 600;
-  text-decoration: none;
+/* ── 每頁最上方的網站列：回主選單、切換功能 ─────────── */
+.site-bar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(31, 35, 40, 0.06); }
+.site-bar-inner { max-width: 1280px; margin: 0 auto; padding: 0 16px; height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.site-brand { display: inline-flex; align-items: center; gap: 8px; flex: none; color: var(--text); font-weight: 700; font-size: 1rem; text-decoration: none; white-space: nowrap; }
+.site-brand-mark { width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
+.site-brand-alt { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+.site-brand:hover { color: var(--accent); }
+.site-tools { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.site-tools a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text); font-size: 0.9rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.site-tools a:hover { background: var(--accent-soft); color: var(--accent-hover); }
+.site-tools a[aria-current="page"] { background: var(--accent); color: var(--accent-text); }
+.site-brand:focus-visible, .site-tools a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .site-bar-inner { padding: 0 12px; height: 44px; gap: 10px; }
+  .site-brand { font-size: 0.92rem; }
+  .site-brand-alt { display: none; }
+  .site-tools a { padding: 4px 7px; font-size: 0.85rem; }
 }
-.feature-link + .feature-link { margin-left: 10px; }
-.feature-link:hover { background: var(--accent); color: var(--accent-text); }
-.feature-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.feature-link-alt { font-size: 0.8rem; font-weight: 500; color: var(--header-muted); }
-.feature-link:hover .feature-link-alt { color: var(--accent-text); }
-@media (max-width: 600px) { .feature-link { margin-top: 10px; font-size: 0.9rem; } }
+@media print { .site-bar { display: none; } }
