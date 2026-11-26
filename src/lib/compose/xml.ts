@@ -156,6 +156,47 @@ export function replaceInParagraph(p: Element, re: RegExp, replacement: (m: RegE
   return true;
 }
 
+/** 把 run 在某個 w:t 的第 offset 個字切成兩個 run（格式相同），回傳後半段的 run */
+function splitRun(r: Element, t: Element, offset: number): Element {
+  const parts = kids(r).filter((c) => !is(c, W, "rPr"));
+  const idx = parts.indexOf(t);
+  const r2 = r.cloneNode(true) as Element;
+  const parts2 = kids(r2).filter((c) => !is(c, W, "rPr"));
+  const text = t.textContent ?? "";
+  setText(t, text.slice(0, offset));
+  setText(parts2[idx], text.slice(offset));
+  // 前半段留 t 之前的內容，後半段留 t 之後的內容
+  parts.slice(idx + 1).forEach(remove);
+  parts2.slice(0, idx).forEach(remove);
+  r.parentNode!.insertBefore(r2, r.nextSibling);
+  return r2;
+}
+
+/**
+ * 段落中 [start, end) 這段文字所在的 run（位置和 replaceInParagraph 一樣，不含算式）。
+ * run 只有一部分在範圍內時先切開，回傳的 run 整個都在範圍內，可以直接改格式。
+ */
+export function runsInRange(p: Element, start: number, end: number): Element[] {
+  const out: Element[] = [];
+  let pos = 0;
+  for (let t of textNodes(p, false)) {
+    const len = (t.textContent ?? "").length;
+    const s = pos;
+    pos += len;
+    const r = t.parentNode as Element;
+    if (!len || pos <= start || s >= end || !is(r, W, "r")) continue;
+    let run = r;
+    if (start > s) {
+      // 切開後，這個 w:t 的後半段是新 run 的第一個內容
+      run = splitRun(run, t, start - s);
+      t = kids(run).find((c) => is(c, W, "t"))!;
+    }
+    if (end < pos) splitRun(run, t, end - Math.max(start, s));
+    if (!out.includes(run)) out.push(run);
+  }
+  return out;
+}
+
 /** 刪掉段落最前面 n 個字元（含算式文字，與 paragraphText 相同的計算方式） */
 export function removeLeadingChars(p: Element, n: number) {
   for (const t of textNodes(p, true)) {

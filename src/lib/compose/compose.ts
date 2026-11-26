@@ -23,6 +23,7 @@ import {
   remove,
   removeLeadingChars,
   replaceInParagraph,
+  runsInRange,
   serialize,
   setW,
   wAttr,
@@ -557,22 +558,118 @@ export function sectionTotal(perQuestion: number | undefined, count: number): nu
  * 大題標題的配分：有指定每題配分就填入每題分數和總分，「每格」改成「每題」；
  * 沒指定的留空格。
  */
-export function fillScores(p: Element, perQuestion?: number, total?: number): boolean {
+export function fillScores(p: Element, perQuestion?: number, total?: number, plain?: PlainFont): boolean {
   let found = false;
   for (const re of TOTAL_PATTERNS) found = replaceInParagraph(p, re, (m) => `${m[1]}${TOTAL_MARK}${m[2] ?? ""}`) || found;
   const per = perQuestion !== undefined;
   found = replaceInParagraph(p, PER_ZH, (m) => `${per ? "每題" : m[1]}${m[2]}${PER_MARK}${m[3]}`) || found;
   found = replaceInParagraph(p, PER_EN, (m) => `${m[1]}${PER_MARK}${m[2]}`) || found;
   if (per) replaceInParagraph(p, PER_BLANK_EN, (m) => `${m[1]}${m[2]}question`);
+  // 「每題X分」「共Y分」不要注音（還是記號的時候找位置，換成數字後還在同一個 run）
+  if (plain) {
+    const text = paragraphText(p, false);
+    for (const m of [...text.matchAll(SCORE_PHRASE_ZH)].reverse()) plain(p, runsInRange(p, m.index!, m.index! + m[0].length));
+  }
   replaceInParagraph(p, new RegExp(PER_MARK, "g"), () => (per ? formatScore(perQuestion) : SCORE_BLANK));
   replaceInParagraph(p, new RegExp(TOTAL_MARK, "g"), () => (total !== undefined ? formatScore(total) : SCORE_BLANK));
   return found;
 }
 
 /** 大題標題完全沒寫配分時，在標題最後補上「（每題X分，共Y分）」，沿用最後一個字的格式 */
-export function appendScores(p: Element, perQuestion: number, total: number) {
+export function appendScores(p: Element, perQuestion: number, total: number, plain?: PlainFont) {
   const text = `（每題${formatScore(perQuestion)}分，共${formatScore(total)}分）`;
-  replaceInParagraph(p, /([^\s\u3000])([\s\u3000]*)$/, (m) => `${m[1]}${text}${m[2]}`);
+  let at = -1;
+  replaceInParagraph(p, /([^\s\u3000])([\s\u3000]*)$/, (m) => {
+    at = m.index + m[1].length;
+    return `${m[1]}${text}${m[2]}`;
+  });
+  if (plain && at >= 0) plain(p, runsInRange(p, at, at + text.length));
+}
+
+/** 填進標題的配分文字：「每題 X 分」「每格 X 分」「共 Y 分」（X、Y 這時還是記號） */
+const SCORE_PHRASE_ZH = new RegExp(String.raw`每(?:小?題|(?:一|個)?(?:格|空格?|小格))\s*${PER_MARK}\s*分|共\s*${TOTAL_MARK}\s*分`, "g");
+
+/** 把這些 run 的注音字型換掉（只換真的是注音字型的） */
+export type PlainFont = (p: Element, runs: Element[]) => void;
+
+/** 注音字型：「華康楷書體注音」「ToneOZ-Zhuyin-Kai-Traditional」「BpmfGenSenRounded」… */
+const ZHUYIN_FONT_RE = /注音|zhuyin|bpmf|toneoz|phonetic/i;
+const FONT_ATTRS = ["ascii", "eastAsia", "hAnsi", "cs"] as const;
+
+/** 注音字型換成同風格、沒有注音的字型 */
+function plainFontFor(name: string): { eastAsia: string; latin: string } {
+  if (/明|ming/i.test(name)) return { eastAsia: "新細明體", latin: "Times New Roman" };
+  if (/黑|圓|hei|round|gothic/i.test(name)) return { eastAsia: "微軟正黑體", latin: "Arial" };
+  return { eastAsia: "標楷體", latin: "Times New Roman" };
+}
+
+/**
+ * 依版型的 styles.xml 判斷 run 實際用的字型（run 自己的 → 字元樣式 → 段落樣式（含 basedOn）→
+ * 預設段落樣式 → 文件預設），是注音字型就在 run 上直接指定沒有注音的字型。
+ */
+export function makePlainFont(styles: Document | undefined): PlainFont {
+  const byId = new Map<string, Element>();
+  let defaultPara: string | undefined;
+  for (const st of styles ? kids(styles.documentElement!) : []) {
+    if (!is(st, W, "style")) continue;
+    const id = wAttr(st, "styleId");
+    if (!id) continue;
+    byId.set(id, st);
+    if (wAttr(st, "type") === "paragraph" && /^(1|true)$/.test(wAttr(st, "default") ?? "")) defaultPara = id;
+  }
+  const docDefault = styles && descendants(styles.documentElement!, W, "rPrDefault")[0];
+
+  /** 樣式鏈上每一層的 rFonts，近的在前 */
+  const styleFonts = (id: string | null | undefined, seen = new Set<string>()): Element[] => {
+    const st = id ? byId.get(id) : undefined;
+    if (!st || seen.has(id!)) return [];
+    seen.add(id!);
+    const own = child(child(st, "rPr"), "rFonts");
+    return [...(own ? [own] : []), ...styleFonts(wAttr(child(st, "basedOn"), "val"), seen)];
+  };
+
+  return (p, runs) => {
+    const pStyle = wAttr(child(child(p, "pPr"), "pStyle"), "val") ?? defaultPara;
+    for (const r of runs) {
+      const rPr = child(r, "rPr");
+      const chain = [
+        child(rPr, "rFonts"),
+        ...styleFonts(wAttr(child(rPr, "rStyle"), "val")),
+        ...styleFonts(pStyle),
+        docDefault && descendants(docDefault, W, "rFonts")[0],
+      ].filter(Boolean) as Element[];
+      // 每個屬性取最近一層有寫的；主題字型（*Theme）不會是注音字型
+      const zhuyin = FONT_ATTRS.map((a) => {
+        for (const f of chain) {
+          if (wAttr(f, `${a}Theme`) || wAttr(f, a === "cs" ? "cstheme" : `${a}Theme`)) return undefined;
+          const v = wAttr(f, a);
+          if (v) return v;
+        }
+        return undefined;
+      }).find((v) => v && ZHUYIN_FONT_RE.test(v));
+      if (!zhuyin) continue;
+
+      const plain = plainFontFor(zhuyin);
+      const doc = r.ownerDocument!;
+      let props = rPr;
+      if (!props) {
+        props = wEl(doc, "rPr");
+        r.insertBefore(props, r.firstChild);
+      }
+      let fonts = child(props, "rFonts");
+      if (!fonts) {
+        fonts = wEl(doc, "rFonts");
+        // rFonts 要排在 rPr 的最前面（rStyle 之後）
+        const rStyle = child(props, "rStyle");
+        props.insertBefore(fonts, rStyle ? rStyle.nextSibling : props.firstChild);
+      }
+      for (const a of ["asciiTheme", "eastAsiaTheme", "hAnsiTheme", "cstheme"]) fonts.removeAttributeNS(W, a);
+      setW(fonts, "ascii", plain.latin);
+      setW(fonts, "hAnsi", plain.latin);
+      setW(fonts, "cs", plain.latin);
+      setW(fonts, "eastAsia", plain.eastAsia);
+    }
+  };
 }
 
 
@@ -952,6 +1049,9 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
 
   const composer = new Composer(zip, doc);
   await composer.init();
+  // 版型標題用注音字型時（低年級考卷），填進去的「每題X分，共Y分」不要注音
+  const stylesFile = zip.file("word/styles.xml");
+  const plainFont = makePlainFont(stylesFile ? parseXml(await stylesFile.async("string")) : undefined);
 
   const sectPr = blocks.find((b) => is(b, W, "sectPr"));
   const firstHeader = blockOf[sections[0].paragraphIndex];
@@ -976,9 +1076,10 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
     const total = sectionTotal(perQuestion, picked.length);
     const header = blocks.slice(headerStart, headerEnd).filter((b) => !is(b, W, "sectPr"));
     let hasScoreText = false;
-    for (const b of header) if (is(b, W, "p")) hasScoreText = fillScores(b, perQuestion, total) || hasScoreText;
+    for (const b of header) if (is(b, W, "p")) hasScoreText = fillScores(b, perQuestion, total, plainFont) || hasScoreText;
     const title = blocks[headerStart];
-    if (!hasScoreText && perQuestion !== undefined && total !== undefined && is(title, W, "p")) appendScores(title, perQuestion, total);
+    if (!hasScoreText && perQuestion !== undefined && total !== undefined && is(title, W, "p"))
+      appendScores(title, perQuestion, total, plainFont);
     output.push(...header);
 
     // 3. 這個大題的編號方式：沿用版型第一題

@@ -236,6 +236,37 @@ describe("compose", () => {
     expect(t).toContain("二、計算題（每題12.5分，共12.5分）");
   });
 
+  it("keeps zhuyin fonts off the score text", async () => {
+    // 低年級版型：整個標題用注音字型，配分文字不要注音
+    const zy = (text: string) => new TextRun({ text, font: "ToneOZ-Zhuyin-Kai-Traditional" });
+    const tpl = await build([
+      new Paragraph({ children: [zy("一、計算題："), zy("每"), zy("題3"), zy("分，共15分。")] }),
+      q("版型計算題一", "c"),
+      new Paragraph({ children: [zy("二、畫畫看")] }),
+      q("版型畫畫看一", "c"),
+    ]);
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections: [src.questions.filter((x) => x.kind === "short"), src.questions.filter((x) => x.kind === "fill")],
+      sources: [src],
+      scores: [4, 2],
+    });
+    const xml = await (await JSZip.loadAsync(out)).file("word/document.xml")!.async("string");
+    const fontOf = (text: string) => {
+      const run = [...xml.matchAll(/<w:r>.*?<\/w:r>/g)].map((m) => m[0]).find((r) => r.includes(`>${text}<`));
+      return /w:eastAsia="([^"]+)"/.exec(run ?? "")?.[1];
+    };
+    expect(fontOf("一、計算題：")).toBe("ToneOZ-Zhuyin-Kai-Traditional");
+    expect(fontOf("每題4分")).toBe("標楷體");
+    expect(fontOf("共4分")).toBe("標楷體");
+    expect(fontOf("二、畫畫看")).toBe("ToneOZ-Zhuyin-Kai-Traditional");
+    // 標題沒寫配分，補上的文字也不要注音
+    expect(fontOf("（每題2分，共4分）")).toBe("標楷體");
+  });
+
   it("fills per-question scores and section totals from the picked count", async () => {
     const tpl = await template();
     const info = await inspectTemplate(tpl, "t.docx");
