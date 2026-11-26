@@ -234,6 +234,33 @@ export function outputFileName(templateName: string, info: ExamInfo): string {
   return `${name === base ? `${base}-組卷` : name}.docx`;
 }
 
+/** 檔名裡的版本號：「…考卷v2」「…_V3」「…v2-組卷」，取最後一個 */
+const VERSION_RE = /(?<![A-Za-z])([vV])(\d{1,3})(?![\dA-Za-z])/g;
+
+/**
+ * 檔名重複時加版本號：沒有版本號的加「v2」，已經是 vN 的改成 v(N+1)，
+ * 還是重複就繼續往上加。taken 是已經用過的檔名（不分大小寫）。
+ */
+export function versionedFileName(name: string, taken: Iterable<string>): string {
+  const used = new Set([...taken].map((n) => n.toLowerCase()));
+  if (!used.has(name.toLowerCase())) return name;
+  const ext = /\.docx$/i.exec(name)?.[0] ?? "";
+  const base = name.slice(0, name.length - ext.length);
+  const last = [...base.matchAll(VERSION_RE)].pop();
+  const make = (n: number) => {
+    if (last) {
+      const i = last.index!;
+      return `${base.slice(0, i)}${last[1]}${n}${base.slice(i + last[0].length)}${ext}`;
+    }
+    // 英數字結尾用底線隔開（Math_v2），中文結尾直接接（考卷v2）
+    return `${base}${/[A-Za-z0-9]$/.test(base) ? "_" : ""}v${n}${ext}`;
+  };
+  for (let n = last ? Number(last[2]) + 1 : 2; ; n++) {
+    const candidate = make(n);
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 /** 標題段落：期中/期末、學年度、學期、年級 */
 function setExamInfo(p: Element, info: ExamInfo) {
   applyInfo(info, TEXT_FIELDS, (re, to) => replaceInParagraph(p, re, (m) => to(m[0])), true);

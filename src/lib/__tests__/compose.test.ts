@@ -12,6 +12,7 @@ import {
   loadDocxSource,
   markDuplicates,
   outputFileName,
+  versionedFileName,
   questionPrefixLength,
 } from "../compose/compose";
 import { formatEqField, parseXml, previewParagraph, replaceInParagraph, W, paragraphText } from "../compose/xml";
@@ -279,6 +280,19 @@ describe("compose helpers", () => {
     ).toBe("2027_2028_S2_Final_G10_Math數學考卷v2.docx");
     expect(outputFileName("2026_S1_Final_G8.docx", { examType: "midterm" })).toBe("2026_S1_Midterm_G8.docx");
     expect(outputFileName("數學考卷.docx", { examType: "final" })).toBe("數學考卷-組卷.docx");
+  });
+
+  it("adds a version number when the file name was already used", () => {
+    expect(versionedFileName("考卷.docx", [])).toBe("考卷.docx");
+    expect(versionedFileName("考卷.docx", ["考卷.docx"])).toBe("考卷v2.docx");
+    expect(versionedFileName("考卷.docx", ["考卷.docx", "考卷v2.docx"])).toBe("考卷v3.docx");
+    expect(versionedFileName("G8_Math.docx", ["g8_math.docx"])).toBe("G8_Math_v2.docx");
+    // 原檔名已有 vN：改成 v(N+1)
+    expect(versionedFileName("Final_G8_數學考卷v2.docx", ["Final_G8_數學考卷v2.docx"])).toBe("Final_G8_數學考卷v3.docx");
+    expect(versionedFileName("Math_V3.docx", ["Math_V3.docx", "Math_V4.docx"])).toBe("Math_V5.docx");
+    expect(versionedFileName("考卷v2-組卷.docx", ["考卷v2-組卷.docx"])).toBe("考卷v3-組卷.docx");
+    // G10、S1 不是版本號
+    expect(versionedFileName("S1_G10.docx", ["S1_G10.docx"])).toBe("S1_G10_v2.docx");
   });
 
   it("strips typed numbers and answer brackets", () => {

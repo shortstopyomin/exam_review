@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ComposeError,
   composeExam,
@@ -13,6 +13,7 @@ import {
   markDuplicates,
   outputFileName,
   sectionTotal,
+  versionedFileName,
   type ExamInfo,
   type ExamType,
   type SourceExam,
@@ -39,6 +40,22 @@ const shortTitle = (t: string) => t.replace(/\s*[（(][^)）]*(?:分|points?|mar
 const SCORE_RE = /^\d{1,3}(?:\.\d{1,2})?$/;
 const parseScore = (v: string | undefined) => (v && SCORE_RE.test(v) && Number(v) > 0 ? Number(v) : undefined);
 
+/**
+ * 這個瀏覽器下載過的考卷檔名。網頁看不到下載資料夾，只能記住自己下載過什麼，
+ * 同名時加 vN。只存在 localStorage；無痕模式或被封鎖時就不記。
+ */
+const DOWNLOADS_KEY = "compose:downloaded-names";
+const MAX_REMEMBERED = 500;
+
+function loadDownloaded(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(DOWNLOADS_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function errorText(e: unknown): string {
   if (e instanceof ComposeError || e instanceof DocxParseError || e instanceof PdfParseError) return e.message;
   return `解析失敗：${(e as Error).message}`;
@@ -60,6 +77,13 @@ export function ExamComposer() {
   const [busy, setBusy] = useState<"template" | "sources" | "compose" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nextIndex = useRef(0);
+  const [downloaded, setDownloaded] = useState<string[]>([]);
+
+  // localStorage 只能在瀏覽器讀取，所以在掛載後才載入
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDownloaded(loadDownloaded());
+  }, []);
 
   const allQuestions = useMemo(() => sources.flatMap((s) => s.questions), [sources]);
   const byId = useMemo(() => new Map(allQuestions.map((q) => [q.id, q])), [allQuestions]);
@@ -189,8 +213,16 @@ export function ExamComposer() {
       );
       const a = document.createElement("a");
       a.href = url;
-      a.download = outputFileName(template.name, examInfo);
+      const name = versionedFileName(outputFileName(template.name, examInfo), loadDownloaded().concat(downloaded));
+      a.download = name;
       a.click();
+      const next = [...new Set([...loadDownloaded(), ...downloaded, name])].slice(-MAX_REMEMBERED);
+      setDownloaded(next);
+      try {
+        localStorage.setItem(DOWNLOADS_KEY, JSON.stringify(next));
+      } catch {
+        // 無痕模式或儲存空間滿了：這次不記
+      }
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       setError(errorText(e));
@@ -217,6 +249,8 @@ export function ExamComposer() {
         grade: has.grade && gradeOk ? Number(grade) : undefined,
       }
     : null;
+  // 下一個要下載的檔名：同名下載過就加 vN
+  const fileName = template && examInfo ? versionedFileName(outputFileName(template.name, examInfo), downloaded) : "";
   const missing = !template
     ? "請先上傳版型"
     : !examType
@@ -377,7 +411,10 @@ export function ExamComposer() {
           </p>
           {template && examInfo && (
             <p className="small file-preview">
-              檔名：<code>{outputFileName(template.name, examInfo)}</code>
+              檔名：<code>{fileName}</code>
+              {fileName !== outputFileName(template.name, examInfo) && (
+                <span className="muted"> （這個檔名下載過，自動加上版本號）</span>
+              )}
             </p>
           )}
         </section>
