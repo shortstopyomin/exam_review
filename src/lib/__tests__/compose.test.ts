@@ -267,6 +267,67 @@ describe("compose", () => {
     expect(fontOf("（每題2分，共4分）")).toBe("標楷體");
   });
 
+  it("recognizes zhuyin fonts by their other names", async () => {
+    // 「文鼎標準楷注音」叫 AR StdKaiZuinn Md
+    const tpl = await build([
+      new Paragraph({ children: [new TextRun("二、計算題"), new TextRun({ text: "（每題____分）", font: "AR StdKaiZuinn Md" })] }),
+      q("版型計算題一", "c"),
+    ]);
+    const src = await loadDocxSource(await source(), "s.docx", 0);
+    const out = await composeExam({
+      template: tpl,
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections: [src.questions.filter((x) => x.kind === "short")],
+      sources: [src],
+      scores: [6],
+    });
+    const xml = await (await JSZip.loadAsync(out)).file("word/document.xml")!.async("string");
+    expect((await texts(out)).filter((x) => x.trim())[0]).toBe("二、計算題（每題6分）");
+    const run = [...xml.matchAll(/<w:r>.*?<\/w:r>/g)].map((m) => m[0]).find((r) => r.includes(">每題6分<"));
+    expect(run).toContain('w:eastAsia="標楷體"');
+  });
+
+  it("moves choice options into their own paragraph aligned with the question text", async () => {
+    const src = await loadDocxSource(
+      await build([
+        p("一、選擇題"),
+        // Shift+Enter 換行後接選項
+        new Paragraph({ children: [new TextRun("1. 下列何者為質數？　"), new TextRun({ text: "(Ａ)　21　(Ｂ)　31", break: 1 })] }),
+        // 選項直接接在題目後面
+        p("2. 若 x + 3 = 7，則 x = ？ (A) 3 (B) 4"),
+        // 選項本來就在下一段：不動
+        p("3. 哪一個是偶數？"),
+        p("(A) 1 (B) 2"),
+      ]),
+      "s.docx",
+      0,
+    );
+    const out = await composeExam({
+      template: await template(),
+      templateName: "t.docx",
+      info: { examType: "final" },
+      sections: [src.questions, []],
+      sources: [src],
+    });
+    const doc = await parseDocx(out);
+    const paras = doc.paragraphs.filter((x) => x.text.trim());
+    const at = paras.findIndex((x) => x.text.includes("質數"));
+    expect(paras.slice(at, at + 6).map((x) => x.text)).toEqual([
+      "(　　)1. 下列何者為質數？",
+      "(Ａ)　21　(Ｂ)　31",
+      "(　　)2. 若 x + 3 = 7，則 x = ？",
+      "(A) 3 (B) 4",
+      "(　　)3. 哪一個是偶數？",
+      "(A) 1 (B) 2",
+    ]);
+    // 選項段落沒有題號
+    expect(paras[at + 1].numberingLabel).toBeFalsy();
+    expect(paras[at + 3].numberingLabel).toBeFalsy();
+    const xml = await (await JSZip.loadAsync(out)).file("word/document.xml")!.async("string");
+    expect(xml).not.toMatch(/質數？[\s\S]{0,200}<w:br\/>/);
+  });
+
   it("fills per-question scores and section totals from the picked count", async () => {
     const tpl = await template();
     const info = await inspectTemplate(tpl, "t.docx");
@@ -304,6 +365,11 @@ describe("compose helpers", () => {
     expect(fill("Part 1 (5 points each, 60 points total)", 4, 40)).toBe("Part 1 (4 points each, 40 points total)");
     expect(fill("2 points per blank, Total: 30", 3, 9)).toBe("3 points per question, Total: 9");
     expect(fill("二、選擇題（40％，每題4分）", 5, 50)).toBe("二、選擇題（50％，每題5分）");
+    // 版型是之前組卷產生的、配分還是底線：直接填進去
+    expect(fill("Part 1選擇題 / Multiple choice (每題____分，共____分)", 4, 44)).toBe(
+      "Part 1選擇題 / Multiple choice (每題4分，共44分)",
+    );
+    expect(fill("Part 2 (____ points each, ____ points total)", 5, 60)).toBe("Part 2 (5 points each, 60 points total)");
     expect(sectionTotal(0.1, 3)).toBe(0.3);
     expect(sectionTotal(undefined, 3)).toBeUndefined();
   });

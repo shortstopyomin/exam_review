@@ -95,6 +95,18 @@ export function questionPrefixLength(text: string): number {
   return m && text.length > n + m[0].length ? n + m[0].length : n;
 }
 
+/** 選擇題的第一個選項「(A)」「（Ａ）」；後面還要有「(B)」才當成選項 */
+const OPTION_A_RE = /[（(][\s\u3000]*[AＡ][\s\u3000]*[)）]/;
+const OPTION_B_RE = /[（(][\s\u3000]*[BＢ][\s\u3000]*[)）]/;
+
+/** PDF 的選擇題：一行裡題目後面接著選項時，選項切成下一行 */
+function splitOptionLine(line: string): string[] {
+  const a = OPTION_A_RE.exec(line);
+  if (!a || !OPTION_B_RE.test(line.slice(a.index + a[0].length))) return [line];
+  const stem = line.slice(0, a.index).replace(/[\s\u3000]+$/, "");
+  return stem ? [stem, line.slice(a.index)] : [line];
+}
+
 /**
  * 版型題目在題號後面手打的作答括號（「1. (   ) 設…」的「(   ) 」），
  * 填了答案的「( B )」換成空的。題號本身就是「(　　)1.」的不算。
@@ -527,7 +539,8 @@ export interface ComposeRequest {
 
 /** 沒指定配分時，大題標題裡的配分數字換成空格，讓老師自己填 */
 const SCORE_BLANK = "____";
-const NUM = String.raw`\d+(?:\.\d+)?`;
+// 分數，或是之前留空的底線（「每題____分」：用組卷產生的考卷再當版型時）
+const NUM = String.raw`(?:\d+(?:\.\d+)?|[_＿]{2,})`;
 const UNIT = String.raw`(?:points?|pts?\.?|marks?)`;
 // 先換成記號再填數字，總分填進去後才不會又被當成每題配分換掉
 const PER_MARK = "";
@@ -593,7 +606,8 @@ const SCORE_PHRASE_ZH = new RegExp(String.raw`每(?:小?題|(?:一|個)?(?:格|�
 export type PlainFont = (p: Element, runs: Element[]) => void;
 
 /** 注音字型：「華康楷書體注音」「ToneOZ-Zhuyin-Kai-Traditional」「BpmfGenSenRounded」… */
-const ZHUYIN_FONT_RE = /注音|zhuyin|bpmf|toneoz|phonetic/i;
+// 「文鼎標準楷注音」的英文名是「AR StdKaiZuinn」：注音的拼法不只一種
+const ZHUYIN_FONT_RE = /注音|zhuyin|zuin|bopomo|bpmf|toneoz|phonetic/i;
 const FONT_ATTRS = ["ascii", "eastAsia", "hAnsi", "cs"] as const;
 
 /** 注音字型換成同風格、沒有注音的字型 */
@@ -687,6 +701,8 @@ interface SectionNumbering {
    * 題目匯入時括號已經和原題號一起拿掉，要照版型補回來。
    */
   answerBracket?: string;
+  /** 選擇題大題：選項「(A)…(E)」另起一個段落 */
+  choice?: boolean;
   /** 版型每題後面的空白行數（選擇題通常 1 行，計算題是作答空間） */
   blankAfter: number;
   /** 版型的空白段落（沿用字級、行距），補空白行時複製它 */
@@ -866,7 +882,8 @@ class Composer {
     index: number,
     perQuestion?: number,
   ): Promise<Element[]> {
-    if (q.lines) return this.pdfQuestion(q.lines, numbering, index);
+    const choice = numbering.choice || q.kind === "choice";
+    if (q.lines) return this.pdfQuestion(choice ? q.lines.flatMap(splitOptionLine) : q.lines, numbering, index);
     const out: Element[] = [];
     for (const b of q.blocks!) out.push(this.doc.importNode(b, true) as Element);
     const first = out.find((e) => is(e, W, "p"));
@@ -887,6 +904,13 @@ class Composer {
       this.cleanup(el, src);
     }
     if (first) this.applyQuestionNumber(first, numbering, index);
+    // 選擇題：選項接在題目後面（同一行或 Shift+Enter 換行）時，移到下一個段落
+    if (choice) {
+      for (let i = 0; i < out.length; i++) {
+        const options = is(out[i], W, "p") ? this.splitOptions(out[i]) : undefined;
+        if (options) out.splice(++i, 0, options);
+      }
+    }
     for (const el of out) for (const p of [...(is(el, W, "p") ? [el] : []), ...descendants(el, W, "p")]) {
       // 題目後面原本的「（8 分）」：換成這次的每題配分，沒指定就留空格
       replaceInParagraph(p, QUESTION_SCORE, (m) => `${m[1]}${perQuestion !== undefined ? formatScore(perQuestion) : SCORE_BLANK}${m[2]}`);
@@ -896,6 +920,98 @@ class Composer {
     for (let i = out.length - 1; i >= 0 && isBlankParagraph(out[i]); i--) blanks++;
     out.push(...this.blankLines(numbering, numbering.blankAfter - blanks));
     return out;
+  }
+
+  /**
+   * 段落文字的左邊位置（換行後的文字從這裡開始）：段落自己的縮排，沒寫的屬性用編號那一層的縮排。
+   * 回傳 w:ind 的 left / leftChars（leftChars 有寫時 Word 以它為準）。
+   */
+  private textIndent(p: Element): { left?: string; leftChars?: string } {
+    const pPr = child(p, "pPr");
+    const own = child(pPr, "ind");
+    const numPr = child(pPr, "numPr");
+    const numId = wAttr(child(numPr, "numId"), "val");
+    const ilvl = wAttr(child(numPr, "ilvl"), "val") ?? "0";
+    const abs = numId ? this.abstractOf(numId) : undefined;
+    const absEl =
+      abs !== undefined && this.numbering
+        ? kids(this.numbering.documentElement!).find((e) => is(e, W, "abstractNum") && wAttr(e, "abstractNumId") === abs)
+        : undefined;
+    const lvl = absEl && kids(absEl).find((e) => is(e, W, "lvl") && wAttr(e, "ilvl") === ilvl);
+    const fromNum = child(child(lvl, "pPr"), "ind");
+    const pick = (a: string, b: string) => wAttr(own, a) ?? wAttr(own, b) ?? wAttr(fromNum, a) ?? wAttr(fromNum, b) ?? undefined;
+    return { left: pick("left", "start"), leftChars: pick("leftChars", "startChars") };
+  }
+
+  /**
+   * 選擇題段落裡，題目後面接著選項「(A)…(B)…」時，把選項切到新的段落：
+   * 段落格式沿用原段落（不含編號），左邊對齊題目文字。原段落尾巴的換行（Shift+Enter）和空白拿掉。
+   * 選項本來就在段落開頭，或沒有 (B) 時不動。
+   */
+  private splitOptions(p: Element): Element | undefined {
+    const text = paragraphText(p, false);
+    const a = OPTION_A_RE.exec(text);
+    if (!a || !OPTION_B_RE.test(text.slice(a.index + a[0].length))) return undefined;
+    const [run] = runsInRange(p, a.index, a.index + a[0].length);
+    if (!run || run.parentNode !== p) return undefined;
+    const items = kids(p);
+    const at = items.indexOf(run);
+    const hasContent = (e: Element) =>
+      !!paragraphText(e, false).replace(/[\s\u3000]+/g, "") ||
+      allElements(e).some(
+        (x) =>
+          (x.namespaceURI === M && x.localName === "oMath") ||
+          (x.namespaceURI === W && (x.localName === "drawing" || x.localName === "object" || x.localName === "pict")),
+      );
+    if (!items.slice(0, at).some((e) => !is(e, W, "pPr") && hasContent(e))) return undefined;
+
+    const indent = this.textIndent(p);
+    const np = wEl(this.doc, "p");
+    const oldPPr = child(p, "pPr");
+    if (oldPPr) {
+      const pPr = oldPPr.cloneNode(true) as Element;
+      const numPr = child(pPr, "numPr");
+      if (numPr) remove(numPr);
+      const oldInd = child(pPr, "ind");
+      const ind = wEl(this.doc, "ind", { left: indent.left ?? "0", firstLine: "0" });
+      if (indent.leftChars) setW(ind, "leftChars", indent.leftChars);
+      if (oldInd) pPr.replaceChild(ind, oldInd);
+      else {
+        // w:ind 要排在 spacing 之後、jc / rPr 之前
+        const before = kids(pPr).find((e) => ["contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "outlineLvl", "rPr", "sectPr", "pPrChange"].includes(e.localName ?? ""));
+        pPr.insertBefore(ind, before ?? null);
+      }
+      np.appendChild(pPr);
+    } else {
+      const pPr = wEl(this.doc, "pPr");
+      pPr.appendChild(wEl(this.doc, "ind", { left: indent.left ?? "0", firstLine: "0" }));
+      np.appendChild(pPr);
+    }
+    for (const e of items.slice(at)) np.appendChild(e);
+    // 換行（Shift+Enter）跟「(A)」在同一個 run 時會一起搬過來：新段落開頭的換行拿掉
+    for (const c of kids(run)) {
+      if (is(c, W, "rPr")) continue;
+      if (is(c, W, "t")) break;
+      if (is(c, W, "br") || is(c, W, "cr")) remove(c);
+    }
+
+    // 原段落尾巴：只有換行、tab、空白的 run 拿掉，最後一段文字的尾端空白也拿掉
+    for (let last = kids(p).pop(); last && is(last, W, "r"); last = kids(p).pop()) {
+      const content = kids(last).filter((c) => !is(c, W, "rPr"));
+      if (content.every((c) => is(c, W, "br") || is(c, W, "cr") || is(c, W, "tab") || (is(c, W, "t") && !(c.textContent ?? "").replace(/[\s\u3000]+/g, "")))) {
+        remove(last);
+        continue;
+      }
+      const t = [...content].reverse().find((c) => is(c, W, "t"));
+      if (t && content[content.length - 1] === t) {
+        const trimmed = (t.textContent ?? "").replace(/[\s\u3000]+$/, "");
+        while (t.firstChild) t.removeChild(t.firstChild);
+        t.appendChild(this.doc.createTextNode(trimmed));
+      }
+      break;
+    }
+    p.parentNode?.insertBefore(np, p.nextSibling);
+    return np;
   }
 
   private applyQuestionNumber(p: Element, numbering: SectionNumbering, index: number) {
@@ -1083,7 +1199,7 @@ export async function composeExam(req: ComposeRequest): Promise<Uint8Array> {
     output.push(...header);
 
     // 3. 這個大題的編號方式：沿用版型第一題
-    const numbering: SectionNumbering = { ilvl: "0", blankAfter: 1 };
+    const numbering: SectionNumbering = { ilvl: "0", blankAfter: 1, choice: sec.kind === "choice" };
     const tq = sec.questions[0];
     if (tq) {
       // 版型第一題後面有幾行空白，新題目就至少留幾行
